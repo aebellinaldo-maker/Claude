@@ -97,9 +97,10 @@ Every 10 minutes (scan) and every 30 seconds (protection):
 2. **Hard filters** (can't be overridden by the AI) — liquidity ≥ $50k, 24h volume ≥ $100k, coin age ≥ 24h, market cap ≥ $250k, not already +300% in 24h, not dumping, not 3× more sellers than buyers.
 3. **Rug-pull check** — RugCheck.xyz: rejects mint/freeze authority, "danger" risks, high risk scores.
 4. **Scoring** — momentum, buy pressure, volume acceleration, liquidity, hype (boosts, trending rank, socials).
-5. **AI decision** — Claude gets the top coins, your open positions, recent wins/losses (to learn from them) and a research briefing (it searches the web for market mood, hot narratives, scams). It answers with buy/skip/sell, confidence and a plain-language reason (in your language). Only coins that passed the filters can be bought.
-6. **Execution** — swaps through Jupiter (best price across Solana DEXes), with price-impact limits. Paper mode uses the exact same Jupiter quotes.
-7. **Protection (every 30 s)** — stop-loss, take-profit (sells half), trailing stop, max hold time, instant exit if liquidity collapses (rug pull), daily loss limit, kill switch.
+5. **Chart analysis** — the 24 h candlestick chart of each shortlisted coin is analysed (trend, RSI, volume, range…) and the bot's own trained model estimates its chance of hitting the take-profit first (see [the own AI model](#the-own-ai-model-pilot-ml)).
+6. **AI decision** — Claude gets the top coins, your open positions, recent wins/losses (to learn from them) and a research briefing (it searches the web for market mood, hot narratives, scams). It answers with buy/skip/sell, confidence and a plain-language reason (in your language). Only coins that passed the filters can be bought.
+7. **Execution** — swaps through Jupiter (best price across Solana DEXes), with price-impact limits. Paper mode uses the exact same Jupiter quotes.
+8. **Protection (every 30 s)** — stop-loss, take-profit (sells half), trailing stop, max hold time, instant exit if liquidity collapses (rug pull), daily loss limit, kill switch.
 
 Defaults (all changeable in the app → Settings):
 
@@ -140,6 +141,20 @@ sudo systemctl restart crypto-bot
 
 Then choose it in the app → Settings → AI model. On a free 4-core CPU a ~9B model needs roughly 2–5 minutes per decision; that's fine because the bot decides at most every 20 minutes, and stop-losses keep running in parallel. There are community models on Ollama trained to imitate Claude Opus' reasoning (search "Opus distilled" on ollama.com) — they are small Qwen models, not the real Opus, so expect clearly weaker judgement.
 
+## The own AI model ("Pilot ML")
+
+Besides the language models above, the bot trains **its own trading model** — free, private, and built only for one question: *"If I buy this coin now, will it reach the take-profit (+40 %) before the stop-loss (−15 %) within 24 hours?"*
+
+How it works:
+
+1. **Chart memory** — the bot saves the 15-minute price chart of every coin it looks at (from GeckoTerminal) into `data/ml/candles/`, and keeps extending it. Coins that later crash stay in the archive, so the model also learns what a rug pull looks like beforehand. The first training also collects ~20 days of charts for the most-traded Solana coins.
+2. **Chart analysis** — at every moment it computes ~20 technical signals: returns over 15 min/1 h/4 h/24 h, RSI, EMA trend (9/21/96), volatility, ATR, position in the 24 h range, distance from the high/low, VWAP, volume surges, upper wicks (selling into pumps), green-candle streaks.
+3. **Training** — [LightGBM](https://lightgbm.readthedocs.io) (gradient-boosted trees, a standard tool in quantitative trading) learns which combinations of signals came before a win. It retrains itself **every week** with the newly collected charts (and you can press *Retrain* in the app).
+4. **Honest test** — every training is tested **walk-forward**: trained on older data, tested on the most recent days it has never seen (with a 24 h gap so nothing leaks). It is compared with "buy everything" and a simple momentum rule, after 1 % fees. The bot only trades on it when it beats both; the app shows these numbers on the Bot tab.
+5. **Using it** — pick *Pilot ML* as the brain (Settings → AI model) and it buys what it rates above its tested threshold. Whatever brain you use, its probability and the chart analysis are also given to Claude/Ollama/OpenRouter/Grok, and the coin screen shows a candlestick chart with RSI, trend, volume and the model's estimate.
+
+Be realistic: a model like this finds small statistical edges at best. Meme coins are driven by hype that charts don't show, and patterns that worked last month can stop working. That's why it's tested on unseen data every week and the safety rules always apply. Train it from the command line with `npm run ml:train` (in `bot/`).
+
 ## Project layout
 
 ```
@@ -147,6 +162,8 @@ bot/    Bot server (TypeScript, Node 20+)
   src/market/   DexScreener, GeckoTerminal, RugCheck, Jupiter, prices
   src/risk/     safety filters, scoring, exit rules & circuit breakers
   src/ai/       AI brains (Claude, Ollama, OpenRouter, Grok), web-research briefing, "ask the AI"
+  src/ml/       own model: chart archive, chart analysis (features), training, predictions
+  ml/train.py   LightGBM training + walk-forward test
   src/engine/   bot loop, paper + real executors
   src/chain/    Solana wallet, balances, sending transactions
   src/api/      HTTP API for the app, card/PayPal on-ramp links

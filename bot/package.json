@@ -14,7 +14,9 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "DATA_DIR=./.test-data tsx --test test/*.test.ts",
-    "scan": "tsx scripts/scan-once.ts"
+    "scan": "tsx scripts/scan-once.ts",
+    "ml:train": "tsx scripts/ml-train.ts",
+    "ml:setup": "python3 -m venv ml/.venv && ml/.venv/bin/pip install -r ml/requirements.txt"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0",

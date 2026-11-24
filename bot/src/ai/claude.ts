@@ -13,6 +13,8 @@ import { log, errMsg } from "../util/log.js";
 import { availableModels, costUsd, resolveModel, type ModelInfo } from "./models.js";
 import { structuredChat } from "./providers.js";
 import { getMarketContext } from "../market/context.js";
+import { getModel } from "../ml/model.js";
+import { mlOpinion } from "../ml/brain.js";
 
 const WEB_SEARCH_USD = 0.01; // $10 per 1,000 searches
 
@@ -122,6 +124,8 @@ What the data means:
 - boost: tokens that paid DexScreener for promotion. It is a marketing signal: it brings attention and short-term flows, but heavy boosting on a weak chart is also a classic pump-and-dump setup.
 - trending_rank: position on GeckoTerminal trending (1 = hottest). new_profile: the team just paid for a DexScreener profile.
 - rule_score: a 0-1 heuristic of momentum, buy pressure, volume acceleration, liquidity, hype and safety. Use it as one input, not the answer.
+- chart_24h: technical analysis of the last 24h of 15-minute candles: trend (EMA 9/21/96), RSI(14), position in the 24h range, distance below the 24h high, volume vs. average, volatility, green candles, upper wicks (selling into pumps), price vs. VWAP. Buying right after a vertical move with RSI > 80 and long upper wicks is usually late; a fresh uptrend with rising volume and room to the 24h high is better.
+- own_model_win_probability: output of the bot's own machine-learning model trained on thousands of past Solana charts (see own_model for what it means and how well it tested). Compare it with own_model.base_win_rate; trust it more when own_model.beats_simple_baselines is true.
 - safety: RugCheck result. "warn" items (e.g. mutable metadata) are common; weigh them.
 - market_context: the Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed) and coins/categories trending on CoinGecko right now. Meme coins do best in greed phases; in fear, be much more selective.
 - briefing: a recent research summary of the crypto/meme market and narratives (may be missing). Coins that fit the narratives currently getting attention have better odds.
@@ -184,6 +188,22 @@ function compactCandidate(c: Candidate) {
     socials: c.socials,
     safety: c.safety ? { level: c.safety.level, rug_score: c.safety.rugScore ?? null, risks: c.safety.risks.map((x) => `${x.level}: ${x.name}`) } : null,
     rule_score: c.score ?? null,
+    chart_24h: c.chart ?? null,
+    own_model_win_probability: c.mlProb !== undefined ? Math.round(c.mlProb * 1000) / 1000 : null,
+  };
+}
+
+/** Tells the language model how far it can trust the own model's probabilities. */
+function ownModelInfo() {
+  const m = getModel();
+  if (!m) return null;
+  return {
+    meaning: `probability that price reaches +${m.params.tpPct}% before -${m.params.slPct}% within ${m.params.horizonBars / 4}h`,
+    buy_threshold: Math.round(m.threshold * 1000) / 1000,
+    base_win_rate: m.data.baseWinRate,
+    tested_on_unseen_days: m.metrics.testDays,
+    test_win_rate_of_its_picks: m.metrics.model.winRate,
+    beats_simple_baselines: m.metrics.useful,
   };
 }
 
@@ -209,6 +229,7 @@ export async function aiDecide(input: DecisionInput, s: Settings): Promise<Decis
     },
     market: { sol_change_24h_pct: input.solChange24hPct ?? null },
     market_context: await getMarketContext().catch(() => null),
+    own_model: ownModelInfo(),
     briefing: state.briefing ? { written_hours_ago: Math.round((Date.now() - state.briefing.ts) / 3_600_000), text: state.briefing.text } : null,
     recent_trades: input.recentTrades,
     candidates: input.candidates.slice(0, maxCandidates).map(compactCandidate),
@@ -311,6 +332,7 @@ export type Opinion = z.infer<typeof OpinionSchema>;
 export async function aiOpinion(c: Candidate, s: Settings): Promise<Opinion | null> {
   const m = resolveModel(s);
   if (!m) return null;
+  if (m.provider === "ml") return mlOpinion(c, s.language);
   const userText = `The owner asks for your honest view on ONE coin (not a trade instruction). Explain the opportunity and the risks plainly for a beginner. ${langLine(s.language)}\n\n${JSON.stringify({
     coin: compactCandidate(c),
     market_context: await getMarketContext().catch(() => null),

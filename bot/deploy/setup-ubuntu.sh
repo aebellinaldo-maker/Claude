@@ -12,9 +12,9 @@ set -euo pipefail
 BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT=8787
 
-echo "==> Installing Node.js, Caddy (HTTPS) and build tools"
+echo "==> Installing Node.js, Python, Caddy (HTTPS) and build tools"
 sudo apt-get update -y
-sudo apt-get install -y curl git build-essential caddy
+sudo apt-get install -y curl git build-essential cmake caddy python3 python3-venv python3-pip
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
 if [ "$NODE_MAJOR" -lt 20 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -25,6 +25,11 @@ echo "==> Building the bot"
 cd "$BOT_DIR"
 npm ci
 npm run build
+
+echo "==> Installing the machine-learning tools for the own model (LightGBM)"
+python3 -m venv ml/.venv
+ml/.venv/bin/pip install --quiet --upgrade pip
+ml/.venv/bin/pip install --quiet -r ml/requirements.txt
 
 if [ ! -f .env ]; then
   cp .env.example .env

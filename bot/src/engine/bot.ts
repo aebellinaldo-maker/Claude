@@ -10,6 +10,11 @@ import { breakers, buySizeSol, exitSignal } from "../risk/rules.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
 import { getTokenHolding } from "../chain/solana.js";
+import { resolveModel } from "../ai/models.js";
+import { analyzeChart, mlPicks } from "../ml/brain.js";
+import { updateArchive } from "../ml/candles.js";
+import { getModel } from "../ml/model.js";
+import { retrainDue, trainModel } from "../ml/trainer.js";
 import { botKeypair } from "../chain/solana.js";
 import { log, errMsg } from "../util/log.js";
 import { L } from "../util/i18n.js";
@@ -57,6 +62,7 @@ class Bot {
   /** Coins with a buy/sell in flight (prevents selling the same coin twice at once). */
   private trading = new Set<string>();
   private lastBriefingTry = 0;
+  private warnedUnproven = false;
   /** Last computed equity, used by the API without hitting the RPC on every request. */
   lastEquity?: Equity;
 
@@ -67,6 +73,8 @@ class Bot {
     const tick = () => {
       void this.tickMonitor();
       void this.tickScan();
+      // The own model retrains itself weekly in the background (and once enough charts exist).
+      if (retrainDue()) void trainModel();
     };
     this.timer = setInterval(tick, 5_000);
     tick();
@@ -347,13 +355,44 @@ class Bot {
     state.lastCandidates = passed;
     log.info(`Scan: ${raw.length} coins found, ${passed.length} passed safety, ${rejected} rejected`);
 
+    // Chart analysis + own-model probability for the shortlist. This also keeps the chart
+    // archive growing, which is what the own model learns from.
+    for (const c of passed) await analyzeChart(c);
+    for (const pos of p.positions) {
+      if (pos.pool) await updateArchive({ pool: pos.pool, mint: pos.mint, symbol: pos.symbol }, 1);
+    }
+
     const freeSlots = Math.max(0, s.maxPositions - p.positions.length);
     const canBuy = !b.noNewBuys && freeSlots > 0 && eq.cashSol - s.feeReserveSol >= s.minTradeSol;
     if (b.noNewBuys && b.reason) addEvent("warn", b.reason);
 
+    // Own trained model as the brain: buy what it rates above its tested threshold.
+    const brain = resolveModel(s);
+    if (s.aiEnabled && brain?.provider === "ml") {
+      if (getModel()?.metrics.useful) {
+        if (canBuy) {
+          for (const pick of mlPicks(passed, freeSlots, s)) {
+            if (!state.running || state.killSwitch.tripped) break;
+            await this.buy(pick.c, pick.sizePct, "ml", pick.reason);
+          }
+        }
+        return;
+      }
+      if (!this.warnedUnproven) {
+        this.warnedUnproven = true;
+        addEvent(
+          "warn",
+          l(
+            "Own model hasn't proven better than simple rules yet — the rules decide until it does",
+            "Eigenes Modell ist noch nicht nachweislich besser als einfache Regeln — bis dahin entscheiden die Regeln",
+          ),
+        );
+      }
+    }
+
     // The AI is consulted only when it can add value, to keep API costs small:
     // a promising coin and a free slot, or an hourly review of open positions.
-    const aiReady = s.aiEnabled && aiCanSpend(s);
+    const aiReady = s.aiEnabled && brain?.provider !== "ml" && aiCanSpend(s);
     if (aiReady) {
       const sinceAi = now - (state.lastAiAt ?? 0);
       const promising = canBuy && passed.some((c) => (c.score ?? 0) >= 0.45);
@@ -484,6 +523,7 @@ class Bot {
           lastUpdate: Date.now(),
           reason,
           imageUrl: c.imageUrl,
+          pool: c.pairAddress,
         });
       }
       this.recordTrade({

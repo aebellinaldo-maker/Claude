@@ -27,6 +27,10 @@ import { availableProviders, onrampUrl } from "./onramp.js";
 import type { Candidate } from "../types.js";
 import { TtlCache } from "../util/http.js";
 import { L } from "../util/i18n.js";
+import { training, trainModel, trainerAvailable } from "../ml/trainer.js";
+import { getModel } from "../ml/model.js";
+import { listArchives, loadArchive, toGrid } from "../ml/candles.js";
+import { analyzeChart } from "../ml/brain.js";
 
 class UserError extends Error {}
 
@@ -351,9 +355,57 @@ app.post("/api/token/:mint/ai", async (c) => {
   if (!aiAvailable()) throw new UserError("No AI is configured on the server (set ANTHROPIC_API_KEY, OLLAMA_MODELS, OPENROUTER_API_KEY or XAI_API_KEY).");
   if (!aiCanSpend(state.settings, 0.03)) throw new UserError("Today's AI budget is used up.");
   const cand = await tokenDetail(mint);
+  await analyzeChart(cand).catch(() => undefined);
   const opinion = await aiOpinion(cand, state.settings);
   if (!opinion) throw new UserError("The AI could not give an opinion right now. Try again later.");
   return c.json({ opinion });
+});
+
+/** Last 24 h price chart + chart analysis + own-model probability for one coin. */
+app.get("/api/token/:mint/chart", async (c) => {
+  const mint = addr.parse(c.req.param("mint"));
+  const cand = await tokenDetail(mint);
+  await analyzeChart(cand);
+  const grid = toGrid(loadArchive(cand.pairAddress)?.candles ?? []).slice(-96);
+  const m = getModel();
+  return c.json({
+    candles: grid.map((k) => ({ t: k[0], o: k[1], h: k[2], l: k[3], c: k[4], v: Math.round(k[5]) })),
+    chart: cand.chart ?? null,
+    mlProb: cand.mlProb ?? null,
+    model: m
+      ? { threshold: m.threshold, baseWinRate: m.data.baseWinRate, tpPct: m.params.tpPct, slPct: m.params.slPct, hours: m.params.horizonBars / 4, useful: m.metrics.useful }
+      : null,
+  });
+});
+
+// ------------------------------------------------------------------ own trained model
+
+app.get("/api/ml/status", (c) => {
+  const m = getModel();
+  return c.json({
+    model: m
+      ? { createdAt: m.createdAt, params: m.params, threshold: m.threshold, data: m.data, metrics: m.metrics, importance: m.importance }
+      : null,
+    training: {
+      running: training.running,
+      phase: training.phase,
+      startedAt: training.startedAt ?? null,
+      finishedAt: training.finishedAt ?? null,
+      progress: training.progress ?? null,
+      error: training.error ?? null,
+      log: training.log.slice(-15),
+    },
+    archiveCoins: listArchives().length,
+    trainerAvailable: trainerAvailable(),
+  });
+});
+
+app.post("/api/ml/train", async (c) => {
+  const body = z.object({ collect: z.boolean().optional() }).parse(await c.req.json().catch(() => ({})));
+  if (!trainerAvailable()) throw new UserError("The trainer (ml/train.py) is missing on the server.");
+  if (training.running) return c.json({ started: false, running: true });
+  void trainModel({ collect: body.collect });
+  return c.json({ started: true });
 });
 
 // ------------------------------------------------------------------ wallet & swaps (your Phantom wallet)

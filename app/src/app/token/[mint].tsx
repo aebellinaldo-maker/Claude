@@ -10,6 +10,7 @@ import { colors, pnlColor } from "../../lib/theme";
 import { signAndSubmit, solscanTx } from "../../lib/tx";
 import { isUserRejection } from "../../lib/phantom";
 import { Big, Button, Card, Chip, Field, H, KV, Loading, Note, Pill, Row, Screen, Spacer, T, TokenAvatar } from "../../components/ui";
+import { ChartCard } from "../../components/chart-card";
 
 export default function TokenScreen() {
   const { mint } = useLocalSearchParams<{ mint: string }>();
@@ -128,6 +129,8 @@ export default function TokenScreen() {
           {c.boostAmount > 0 ? <Pill label={`⚡ ${t("boosted")}`} color={colors.yellow} bg={colors.yellowDim} /> : null}
         </Row>
       </Card>
+
+      {!isSol ? <ChartCard mint={mint} /> : null}
 
       <Card>
         <KV k={t("mcap")} v={compactUsd(c.marketCapUsd, lang)} />

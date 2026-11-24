@@ -168,6 +168,41 @@ export interface Opinion {
   points: string[];
 }
 
+export interface TokenChart {
+  candles: { t: number; o: number; h: number; l: number; c: number; v: number }[];
+  chart: Record<string, number | string> | null;
+  mlProb: number | null;
+  model: { threshold: number; baseWinRate: number; tpPct: number; slPct: number; hours: number; useful: boolean } | null;
+}
+
+export interface MlStats {
+  trades: number;
+  winRate: number | null;
+  avgReturnPct: number | null;
+}
+
+export interface MlStatus {
+  model: {
+    createdAt: string;
+    params: { tpPct: number; slPct: number; horizonBars: number; feePct: number };
+    threshold: number;
+    data: { samples: number; coins: number; days: number; baseWinRate: number };
+    metrics: { testDays: number; testAuc: number; model: MlStats; top10pct: MlStats; buyEverything: MlStats; momentumRule: MlStats; useful: boolean };
+    importance: { feature: string; gain: number }[];
+  } | null;
+  training: {
+    running: boolean;
+    phase: "idle" | "collecting" | "dataset" | "training" | "done" | "failed";
+    startedAt: number | null;
+    finishedAt: number | null;
+    progress: string | null;
+    error: string | null;
+    log: string[];
+  };
+  archiveCoins: number;
+  trainerAvailable: boolean;
+}
+
 export type PayMethod = "card" | "paypal" | "apple_pay" | "google_pay" | "bank";
 export interface OnrampProvider {
   id: "moonpay" | "transak" | "moonpay_web";
@@ -253,6 +288,9 @@ export function createApi(serverUrl: string, token: string) {
     trending: () => req<{ coins: Candidate[]; botPicks: Candidate[] }>("GET", "/api/market/trending", undefined, 60_000),
     search: (q: string) => req<{ coins: Candidate[] }>("GET", `/api/market/search?q=${encodeURIComponent(q)}`),
     token: (mint: string) => req<{ coin: Candidate }>("GET", `/api/token/${mint}`),
+    tokenChart: (mint: string) => req<TokenChart>("GET", `/api/token/${mint}/chart`, undefined, 90_000),
+    mlStatus: () => req<MlStatus>("GET", "/api/ml/status"),
+    mlTrain: (collect?: boolean) => req<{ started: boolean }>("POST", "/api/ml/train", { collect }),
     askAi: (mint: string) => req<{ opinion: Opinion }>("POST", `/api/token/${mint}/ai`, {}, 180_000),
     wallet: (address: string) => req<WalletInfo>("GET", `/api/wallet/${address}`),
     quote: (inputMint: string, outputMint: string, amount: string, slippageBps = 100) =>

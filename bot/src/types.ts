@@ -74,6 +74,8 @@ export interface Position {
   lastUpdate: number;
   reason: string;
   imageUrl?: string;
+  /** DEX pool address (used to keep archiving the chart while the coin is held). */
+  pool?: string;
 }
 
 export type TradeTrigger =
@@ -87,7 +89,8 @@ export type TradeTrigger =
   | "ai_exit"
   | "panic"
   | "kill_switch"
-  | "manual";
+  | "manual"
+  | "ml";
 
 export interface Trade {
   id: string;
@@ -155,6 +158,10 @@ export interface Candidate {
   sources: string[];
   trendingRank?: number;
   safety?: SafetyReport;
+  /** Chart analysis of the last 24 h (trend, RSI, volume…), when candles were available. */
+  chart?: Record<string, number | string>;
+  /** Own model: probability of hitting take-profit before stop-loss. */
+  mlProb?: number;
   score?: number;
   scoreBreakdown?: Record<string, number>;
 }

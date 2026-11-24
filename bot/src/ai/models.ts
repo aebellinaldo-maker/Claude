@@ -1,7 +1,8 @@
 import { config } from "../config.js";
 import type { Settings } from "../types.js";
+import { getModel } from "../ml/model.js";
 
-export type Provider = "claude" | "ollama" | "openrouter" | "xai";
+export type Provider = "claude" | "ollama" | "openrouter" | "xai" | "ml";
 
 export interface ModelInfo {
   /** Stored in settings: Claude models by plain id, others as "<provider>/<model>". */
@@ -52,6 +53,20 @@ export function availableModels(): ModelInfo[] {
   if (r.apiKey) for (const name of r.models) out.push(other("openrouter", name, r.priceInUsd, r.priceOutUsd, "OpenRouter"));
   const x = config.xai;
   if (x.apiKey) for (const name of x.models) out.push(other("xai", name, x.priceInUsd, x.priceOutUsd, "Grok (xAI)"));
+  const own = getModel();
+  if (own) {
+    out.push({
+      id: "ml/pilot",
+      label: `Pilot ML — own trained model (free)${own.metrics.useful ? "" : " ⚠ not proven yet"}`,
+      provider: "ml",
+      name: "pilot",
+      inUsd: 0,
+      outUsd: 0,
+      fallbacks: false,
+      webSearch: false,
+      free: true,
+    });
+  }
   return out;
 }
 

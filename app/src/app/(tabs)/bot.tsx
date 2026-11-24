@@ -7,6 +7,7 @@ import type { BotPosition } from "../../lib/api";
 import { eur, pct, timeAgo } from "../../lib/format";
 import { colors, pnlColor } from "../../lib/theme";
 import { Big, Button, Card, Divider, H, Loading, Note, Pill, Row, Screen, Spacer, Sparkline, T, TokenAvatar } from "../../components/ui";
+import { OwnModelCard } from "../../components/own-model-card";
 
 export default function BotScreen() {
   const { t, lang, api, hasServer } = useApp();
@@ -239,6 +240,9 @@ export default function BotScreen() {
           </Row>
         ) : null}
       </Card>
+
+      <H>🤖 {t("ownModelTitle")}</H>
+      <OwnModelCard />
 
       <Row>
         <H>{t("activity")}</H>
