@@ -12,6 +12,7 @@ import { state } from "../store.js";
 import { fetchJson } from "../util/http.js";
 import { log, errMsg } from "../util/log.js";
 import { discoverCandidates } from "../market/discovery.js";
+import { searchPairs } from "../market/dexscreener.js";
 import { listArchives, updateArchive } from "./candles.js";
 import { buildDataset } from "./dataset.js";
 import { FEATURE_NAMES } from "./features.js";
@@ -50,6 +51,11 @@ const QUOTES = new Set([
   "EPjFWdd5AufqSSqeM2qJxyKBUuBWT3Z7xL3oPrEXTt1v",
   "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
 ]);
+
+const SEARCH_TERMS = [
+  "pump", "sol", "meme", "dog", "cat", "frog", "pepe", "inu", "ai", "agent", "trump", "elon", "moon", "baby",
+  "wif", "bonk", "chad", "based", "cult", "gm", "ape", "monkey", "fish", "bird", "panda", "goat", "trend", "coin",
+];
 
 interface GeckoPool {
   attributes: { address: string; name: string; pool_created_at?: string; reserve_in_usd?: string };
@@ -102,6 +108,21 @@ async function poolsToCollect(topPages = 5): Promise<{ pool: string; mint: strin
     }
   } catch {
     /* optional */
+  }
+  // Broaden beyond today's top lists: search common meme themes on DexScreener. This adds many
+  // smaller and older coins (including ones that faded), which reduces survivorship bias.
+  for (const q of SEARCH_TERMS) {
+    try {
+      for (const p of await searchPairs(q)) {
+        const mint = p.baseToken.address;
+        const symbol = p.baseToken.symbol ?? "?";
+        if (out.has(mint) || QUOTES.has(mint) || SKIP_SYMBOLS.test(symbol)) continue;
+        if ((p.liquidity?.usd ?? 0) < 30_000 || (p.volume?.h24 ?? 0) < 20_000) continue;
+        out.set(mint, { pool: p.pairAddress, mint, symbol, createdAt: p.pairCreatedAt || undefined });
+      }
+    } catch {
+      /* optional */
+    }
   }
   return [...out.values()];
 }
