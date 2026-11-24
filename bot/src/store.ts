@@ -8,8 +8,8 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "en",
   paperBudgetEur: 10,
 
-  scanIntervalMin: 10,
-  monitorIntervalSec: 30,
+  scanIntervalMin: 3,
+  monitorIntervalSec: 15,
 
   maxPositions: 3,
   maxPositionPct: 40,

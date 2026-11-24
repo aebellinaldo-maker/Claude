@@ -16,7 +16,9 @@
     "test": "DATA_DIR=./.test-data tsx --test test/*.test.ts",
     "scan": "tsx scripts/scan-once.ts",
     "ml:train": "tsx scripts/ml-train.ts",
-    "ml:setup": "python3 -m venv ml/.venv && ml/.venv/bin/pip install -r ml/requirements.txt"
+    "ml:setup": "python3 -m venv ml/.venv && ml/.venv/bin/pip install -r ml/requirements.txt",
+    "ml:collect": "tsx scripts/ml-collect.ts",
+    "ml:optimize": "tsx scripts/ml-optimize.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0",

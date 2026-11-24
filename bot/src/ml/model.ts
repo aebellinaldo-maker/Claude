@@ -60,6 +60,8 @@ export interface PilotModel {
 }
 
 export const MODEL_FILE = path.join(ML_DIR, "model.json");
+/** Model shipped with the code: used until the server has trained its own (and on hosts that wipe files). */
+export const BUNDLED_MODEL_FILE = path.resolve("ml/pretrained-model.json");
 
 let current: PilotModel | null = null;
 
@@ -85,11 +87,12 @@ export function predictWith(m: PilotModel, x: number[]): number {
 /** Loads (or reloads) data/ml/model.json. Rejects models that don't match this code's features. */
 export function loadModel(): PilotModel | null {
   try {
-    if (!fs.existsSync(MODEL_FILE)) {
+    const file = fs.existsSync(MODEL_FILE) ? MODEL_FILE : fs.existsSync(BUNDLED_MODEL_FILE) ? BUNDLED_MODEL_FILE : null;
+    if (!file) {
       current = null;
       return null;
     }
-    const m = JSON.parse(fs.readFileSync(MODEL_FILE, "utf8")) as PilotModel;
+    const m = JSON.parse(fs.readFileSync(file, "utf8")) as PilotModel;
     if (m.featureNames.join() !== FEATURE_NAMES.join()) {
       log.warn("Own model was trained with different chart features — retrain it");
       current = null;

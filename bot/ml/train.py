@@ -145,7 +145,7 @@ best_rounds = max(50, model.best_iteration or 200)
 p_valid = model.predict(X[valid], num_iteration=best_rounds)
 
 # Probability threshold with the best average return on validation (min. 40 trades).
-best_thr, best_avg = None, -1e9
+best_thr, best_avg, best_n = None, -1e9, 0
 for q in [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97]:
     thr = float(np.quantile(p_valid, q))
     sel = p_valid >= thr
@@ -153,7 +153,7 @@ for q in [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.93, 0.95, 0.97]:
         continue
     avg = float(ret[valid][sel].mean())
     if avg > best_avg:
-        best_thr, best_avg = thr, avg
+        best_thr, best_avg, best_n = thr, avg, int(sel.sum())
 if best_thr is None:
     best_thr = float(np.quantile(p_valid, 0.9))
 
@@ -188,6 +188,7 @@ if fwd.sum() >= 300 and (t[fwd][-1] - t[fwd][0]) >= 3 * 86400:
         forward["validated"] = bool(beats(forward["model"], forward["buyEverything"]))
 
 metrics = dict(
+    validation=dict(trades=best_n, avgReturnPct=round(best_avg * 100, 3) if best_n else None),
     testDays=round(float(test_days), 1),
     testCoins=len(held),
     testAuc=round(auc(p_test, y[test]), 4),
@@ -237,6 +238,8 @@ check_idx = np.linspace(0, len(y) - 1, 5).astype(int)
 out["selfCheck"] = [
     {"x": [None if math.isnan(v) else float(v) for v in X[i]], "p": float(final.predict(X[i : i + 1])[0])} for i in check_idx
 ]
-(data_dir / "ml" / "model.json.tmp").write_text(json.dumps(out))
-(data_dir / "ml" / "model.json.tmp").replace(data_dir / "ml" / "model.json")
+out_file = Path(opts.get("outFile") or (data_dir / "ml" / "model.json"))
+tmp = out_file.with_suffix(".json.tmp")
+tmp.write_text(json.dumps(out))
+tmp.replace(out_file)
 say(f"Saved model: {len(out['trees'])} trees, threshold {best_thr:.3f}. Top signals: {', '.join(i['feature'] for i in importance[:5])}")

@@ -57,10 +57,10 @@ interface GeckoPool {
 }
 
 /** Pools worth learning from: the most traded and trending Solana pools, plus the bot's own candidates. */
-async function poolsToCollect(): Promise<{ pool: string; mint: string; symbol: string; createdAt?: number }[]> {
+async function poolsToCollect(topPages = 5): Promise<{ pool: string; mint: string; symbol: string; createdAt?: number }[]> {
   const out = new Map<string, { pool: string; mint: string; symbol: string; createdAt?: number }>();
   const urls = [
-    ...[1, 2, 3, 4, 5].map((p) => `https://api.geckoterminal.com/api/v2/networks/solana/pools?page=${p}&sort=h24_volume_usd_desc`),
+    ...Array.from({ length: topPages }, (_, i) => `https://api.geckoterminal.com/api/v2/networks/solana/pools?page=${i + 1}&sort=h24_volume_usd_desc`),
     ...[1, 2, 3].map((p) => `https://api.geckoterminal.com/api/v2/networks/solana/trending_pools?page=${p}`),
   ];
   for (const url of urls) {
@@ -98,13 +98,13 @@ async function poolsToCollect(): Promise<{ pool: string; mint: string; symbol: s
 }
 
 /** Adds charts of many active coins to the archive (first training run or a thin archive). */
-export async function collectCharts(maxNew = 120): Promise<number> {
+export async function collectCharts(maxNew = 120, pages = 2, topPages = 5): Promise<number> {
   const known = new Set(listArchives());
-  const pools = (await poolsToCollect()).filter((p) => !known.has(p.pool.replace(/[^A-Za-z0-9]/g, ""))).slice(0, maxNew);
+  const pools = (await poolsToCollect(topPages)).filter((p) => !known.has(p.pool.replace(/[^A-Za-z0-9]/g, ""))).slice(0, maxNew);
   note(`Collecting ~20 days of charts for ${pools.length} coins (free API, takes a few minutes)…`);
   let done = 0;
   for (const p of pools) {
-    await updateArchive(p, 2);
+    await updateArchive(p, pages);
     done++;
     training.progress = `${done}/${pools.length} charts`;
     if (done % 20 === 0) note(`${done}/${pools.length} charts collected`);
@@ -127,6 +127,17 @@ function runPython(args: string[]): Promise<void> {
       else reject(new Error(errTail.trim().split("\n").filter(Boolean).pop() ?? `trainer exited with code ${code}`));
     });
   });
+}
+
+/** Builds the dataset for one strategy (take-profit / stop-loss / hold time) and trains on it. */
+export async function trainOnce(p: { tpPct: number; slPct: number; holdHours: number; minVolume24hUsd: number; outFile?: string }) {
+  const horizonBars = Math.round(p.holdHours * 4);
+  const ds = await buildDataset({ tpPct: p.tpPct, slPct: p.slPct, horizonBars, minVolume24hUsd: p.minVolume24hUsd, every: 4 });
+  await runPython([
+    config.dataDir,
+    JSON.stringify({ featureNames: FEATURE_NAMES, tpPct: p.tpPct, slPct: p.slPct, horizonBars, feePct: 1.0, outFile: p.outFile }),
+  ]);
+  return ds;
 }
 
 /** Full training run. Safe to call anytime; returns immediately if one is already running. */
@@ -176,6 +187,9 @@ export async function trainModel(opts: { collect?: boolean } = {}): Promise<void
 /** Weekly automatic retraining (and a first training once enough charts exist). */
 export function retrainDue(): boolean {
   if (training.running || !trainerAvailable()) return false;
+  // Hosts that wipe files (Render free, Hugging Face) can't build up a chart archive:
+  // they use the model shipped with the code instead of retraining on a tiny CPU.
+  if (config.ephemeral && getModel()) return false;
   if (training.finishedAt && Date.now() - training.finishedAt < 6 * 3_600_000) return false; // don't retry failures too often
   const m = getModel();
   if (!m) return true;
