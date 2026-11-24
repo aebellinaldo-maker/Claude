@@ -1,3 +1,8 @@
+/**
+ * The bot's AI brain. Claude is called through the Anthropic SDK (with web search for
+ * the market briefing); Ollama / OpenRouter / Grok go through ./providers.ts. All of
+ * them return the same validated JSON decisions.
+ */
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
@@ -5,30 +10,29 @@ import { config } from "../config.js";
 import { save, state, today } from "../store.js";
 import type { AiDecision, AiExit, Candidate, Lang, Settings } from "../types.js";
 import { log, errMsg } from "../util/log.js";
-
-export const AI_MODELS = [
-  { id: "claude-opus-5-5", label: "Claude Opus 5.5 (smartest)", inUsd: 4, outUsd: 20, fallbacks: true },
-  { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (balanced)", inUsd: 2, outUsd: 10, fallbacks: true },
-  { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (cheapest)", inUsd: 0.1, outUsd: 0.5, fallbacks: false },
-] as const;
+import { availableModels, costUsd, resolveModel, type ModelInfo } from "./models.js";
+import { structuredChat } from "./providers.js";
+import { getMarketContext } from "../market/context.js";
 
 const WEB_SEARCH_USD = 0.01; // $10 per 1,000 searches
 
 const client = config.anthropicApiKey ? new Anthropic({ apiKey: config.anthropicApiKey }) : null;
 
+/** True when at least one AI brain is configured on the server. */
 export function aiAvailable(): boolean {
-  return client !== null;
+  return availableModels().length > 0;
 }
 
-function modelInfo(id: string) {
-  return AI_MODELS.find((m) => m.id === id) ?? { id, label: id, inUsd: 5, outUsd: 25, fallbacks: false };
+/** Whether the selected brain can make another call now (free models are never budget-limited). */
+export function aiCanSpend(s: Settings, minUsd = 0.05): boolean {
+  const m = resolveModel(s);
+  if (!m) return false;
+  return m.free || aiBudgetLeft(s) >= minUsd;
 }
 
-/** Beta flags + server-side refusal fallback for models that support it. */
-function fallbackParams(model: string) {
-  return modelInfo(model).fallbacks
-    ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
-    : { betas: [] as string[] };
+/** Beta flags + server-side refusal fallback for Claude models that support it. */
+function fallbackParams(m: ModelInfo) {
+  return m.fallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : { betas: [] as string[] };
 }
 
 function resetSpendIfNewDay() {
@@ -40,28 +44,66 @@ export function aiBudgetLeft(s: Settings): number {
   return Math.max(0, s.aiDailyBudgetUsd - state.aiSpend.usd);
 }
 
-function recordUsage(model: string, usage: Anthropic.Beta.BetaUsage) {
+function addSpend(m: ModelInfo, usd: number, detail: string): number {
   resetSpendIfNewDay();
-  const m = modelInfo(model);
+  state.aiSpend.usd += usd;
+  state.aiSpend.calls += 1;
+  save();
+  log.info(`AI call (${m.id}): ${detail} ≈ $${usd.toFixed(4)}`);
+  return usd;
+}
+
+function recordClaudeUsage(m: ModelInfo, usage: Anthropic.Beta.BetaUsage): number {
   const inTok = usage.input_tokens ?? 0;
   const cacheWrite = usage.cache_creation_input_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
   const outTok = usage.output_tokens ?? 0;
   const searches = usage.server_tool_use?.web_search_requests ?? 0;
-  const usd =
-    (inTok * m.inUsd + cacheWrite * m.inUsd * 1.25 + cacheRead * m.inUsd * 0.1 + outTok * m.outUsd) / 1_000_000 +
-    searches * WEB_SEARCH_USD;
-  state.aiSpend.usd += usd;
-  state.aiSpend.calls += 1;
-  save();
-  log.info(`AI call (${model}): ${inTok + cacheRead + cacheWrite} in / ${outTok} out tokens, ${searches} searches ≈ $${usd.toFixed(4)}`);
-  return usd;
+  const usd = costUsd(m, inTok + cacheWrite * 1.25 + cacheRead * 0.1, outTok) + searches * WEB_SEARCH_USD;
+  return addSpend(m, usd, `${inTok + cacheRead + cacheWrite} in / ${outTok} out tokens, ${searches} searches`);
 }
 
 function langLine(lang: Lang) {
   return lang === "de"
     ? "Write every human-readable text field (reason, market_view, summary, points) in German."
     : "Write every human-readable text field in English.";
+}
+
+/** Runs one structured request on whichever brain is selected. */
+async function ask<T extends z.ZodType>(
+  m: ModelInfo,
+  what: string,
+  system: string,
+  userText: string,
+  schema: T,
+): Promise<{ data: z.infer<T> | null; usd: number }> {
+  try {
+    if (m.provider === "claude") {
+      if (!client) return { data: null, usd: 0 };
+      const res = await client.beta.messages.parse({
+        model: m.id,
+        max_tokens: 16000,
+        ...fallbackParams(m),
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        output_config: { effort: state.settings.aiEffort, format: betaZodOutputFormat(schema) },
+        messages: [{ role: "user", content: userText }],
+      });
+      const usd = recordClaudeUsage(m, res.usage);
+      if (res.stop_reason === "refusal") {
+        log.warn(`AI declined the ${what} request (${res.stop_details?.category ?? "no category"})`);
+        return { data: null, usd };
+      }
+      if (!res.parsed_output) log.warn(`AI ${what} could not be parsed (stop_reason=${res.stop_reason})`);
+      return { data: (res.parsed_output ?? null) as z.infer<T> | null, usd };
+    }
+    const r = await structuredChat(m, system, userText, schema);
+    const usd = addSpend(m, r.usd, `${r.inTokens} in / ${r.outTokens} out tokens`);
+    if (!r.data) log.warn(`AI ${what} (${m.id}) answer unusable: ${r.error ?? "unknown"}`);
+    return { data: r.data as z.infer<T> | null, usd };
+  } catch (e) {
+    logApiError(what, e);
+    return { data: null, usd: 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -81,13 +123,14 @@ What the data means:
 - trending_rank: position on GeckoTerminal trending (1 = hottest). new_profile: the team just paid for a DexScreener profile.
 - rule_score: a 0-1 heuristic of momentum, buy pressure, volume acceleration, liquidity, hype and safety. Use it as one input, not the answer.
 - safety: RugCheck result. "warn" items (e.g. mutable metadata) are common; weigh them.
-- briefing: a recent research summary of the crypto/meme market and narratives. Coins that fit the narratives currently getting attention have better odds.
+- market_context: the Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed) and coins/categories trending on CoinGecko right now. Meme coins do best in greed phases; in fear, be much more selective.
+- briefing: a recent research summary of the crypto/meme market and narratives (may be missing). Coins that fit the narratives currently getting attention have better odds.
 - recent_trades: the bot's own latest results. Learn from them: avoid repeating losing patterns and re-buying coins that just stopped out.
 
 Rules for your answer:
 - Buy at most as many coins as there are free slots. Buying nothing is often correct, especially in a weak market (SOL falling, most memes red).
 - Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit before its stop-loss.
-- Every candidate you were given must appear in "buys" (as buy or skip); every open position must appear in "exits" (hold or sell).
+- Every candidate you were given must appear in "buys" (as buy or skip); every open position must appear in "exits" (hold or sell). Copy each "mint" exactly.
 - Keep each reason to one or two short sentences that a non-expert can understand.`;
 
 const DecisionSchema = z.object({
@@ -152,7 +195,10 @@ export interface DecisionResult {
 }
 
 export async function aiDecide(input: DecisionInput, s: Settings): Promise<DecisionResult | null> {
-  if (!client) return null;
+  const m = resolveModel(s);
+  if (!m) return null;
+  // Small local models get fewer candidates so the prompt stays short and fast on a CPU.
+  const maxCandidates = m.provider === "ollama" && !config.ollama.apiKey ? 5 : 8;
   const payload = {
     portfolio: {
       equity_eur: Math.round(input.equityEur * 100) / 100,
@@ -162,56 +208,32 @@ export async function aiDecide(input: DecisionInput, s: Settings): Promise<Decis
       open_positions: input.positions,
     },
     market: { sol_change_24h_pct: input.solChange24hPct ?? null },
+    market_context: await getMarketContext().catch(() => null),
     briefing: state.briefing ? { written_hours_ago: Math.round((Date.now() - state.briefing.ts) / 3_600_000), text: state.briefing.text } : null,
     recent_trades: input.recentTrades,
-    candidates: input.candidates.map(compactCandidate),
+    candidates: input.candidates.slice(0, maxCandidates).map(compactCandidate),
   };
+  const userText = `Current time: ${new Date().toISOString()}\n${langLine(s.language)}\n\n${JSON.stringify(payload)}`;
 
-  try {
-    const res = await client.beta.messages.parse({
-      model: s.aiModel,
-      max_tokens: 16000,
-      ...fallbackParams(s.aiModel),
-      system: [{ type: "text", text: DECISION_SYSTEM, cache_control: { type: "ephemeral" } }],
-      output_config: { effort: s.aiEffort, format: betaZodOutputFormat(DecisionSchema) },
-      messages: [
-        {
-          role: "user",
-          content: `Current time: ${new Date().toISOString()}\n${langLine(s.language)}\n\n${JSON.stringify(payload)}`,
-        },
-      ],
-    });
-    const costUsd = recordUsage(s.aiModel, res.usage);
-    if (res.stop_reason === "refusal") {
-      log.warn(`AI declined the decision request (${res.stop_details?.category ?? "no category"})`);
-      return null;
-    }
-    const out = res.parsed_output;
-    if (!out) {
-      log.warn(`AI decision could not be parsed (stop_reason=${res.stop_reason})`);
-      return null;
-    }
-    const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number.isFinite(x) ? x : lo));
-    return {
-      marketView: out.market_view,
-      buys: out.buys.map((b) => ({
-        mint: b.mint,
-        action: b.action,
-        confidence: clamp(b.confidence, 0, 1),
-        sizePct: clamp(b.size_pct, 25, 100),
-        reason: b.reason,
-      })),
-      exits: out.exits.map((e) => ({ mint: e.mint, action: e.action, sellPct: clamp(e.sell_pct, 0, 100), reason: e.reason })),
-      costUsd,
-    };
-  } catch (e) {
-    logApiError("decision", e);
-    return null;
-  }
+  const { data: out, usd } = await ask(m, "decision", DECISION_SYSTEM, userText, DecisionSchema);
+  if (!out) return null;
+  const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number.isFinite(x) ? x : lo));
+  return {
+    marketView: out.market_view,
+    buys: out.buys.map((b) => ({
+      mint: b.mint,
+      action: b.action,
+      confidence: clamp(b.confidence, 0, 1),
+      sizePct: clamp(b.size_pct, 25, 100),
+      reason: b.reason,
+    })),
+    exits: out.exits.map((e) => ({ mint: e.mint, action: e.action, sellPct: clamp(e.sell_pct, 0, 100), reason: e.reason })),
+    costUsd: usd,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Market briefing (uses Claude's web search to read current news & narratives)
+// Market briefing (Claude only: uses Claude's web search to read news & narratives)
 // ---------------------------------------------------------------------------
 
 const BRIEFING_PROMPT = `Research the current state of the crypto market with a focus on Solana meme coins, using web search. Today is {DATE}.
@@ -224,11 +246,15 @@ Find out:
 
 Write a compact briefing (max ~250 words) for a trading bot: bullet points, concrete coin names/tickers where relevant, no filler. {LANG}`;
 
+/** True when the selected brain can write a web-research briefing. */
+export function briefingSupported(s: Settings): boolean {
+  return !!resolveModel(s)?.webSearch && !!client;
+}
+
 export async function aiBriefing(s: Settings): Promise<string | null> {
-  if (!client) return null;
-  const tools: Anthropic.Beta.BetaToolUnion[] = s.webResearch
-    ? [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }]
-    : [];
+  const m = resolveModel(s);
+  if (!client || !m || m.provider !== "claude") return null;
+  const tools: Anthropic.Beta.BetaToolUnion[] = s.webResearch ? [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }] : [];
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     {
       role: "user",
@@ -238,14 +264,14 @@ export async function aiBriefing(s: Settings): Promise<string | null> {
   try {
     for (let i = 0; i < 4; i++) {
       const res = await client.beta.messages.create({
-        model: s.aiModel,
+        model: m.id,
         max_tokens: 16000,
-        ...fallbackParams(s.aiModel),
+        ...fallbackParams(m),
         output_config: { effort: s.aiEffort },
         tools,
         messages,
       });
-      recordUsage(s.aiModel, res.usage);
+      recordClaudeUsage(m, res.usage);
       if (res.stop_reason === "pause_turn") {
         // Server-side search loop paused; send the partial turn back to let it continue.
         messages.push({ role: "assistant", content: res.content });
@@ -283,31 +309,15 @@ const OpinionSchema = z.object({
 export type Opinion = z.infer<typeof OpinionSchema>;
 
 export async function aiOpinion(c: Candidate, s: Settings): Promise<Opinion | null> {
-  if (!client) return null;
-  try {
-    const res = await client.beta.messages.parse({
-      model: s.aiModel,
-      max_tokens: 16000,
-      ...fallbackParams(s.aiModel),
-      system: [{ type: "text", text: DECISION_SYSTEM, cache_control: { type: "ephemeral" } }],
-      output_config: { effort: s.aiEffort, format: betaZodOutputFormat(OpinionSchema) },
-      messages: [
-        {
-          role: "user",
-          content: `The owner asks for your honest view on ONE coin (not a trade instruction). Explain the opportunity and the risks plainly for a beginner. ${langLine(s.language)}\n\n${JSON.stringify({
-            coin: compactCandidate(c),
-            briefing: state.briefing?.text ?? null,
-          })}`,
-        },
-      ],
-    });
-    recordUsage(s.aiModel, res.usage);
-    if (res.stop_reason === "refusal") return null;
-    return res.parsed_output ?? null;
-  } catch (e) {
-    logApiError("opinion", e);
-    return null;
-  }
+  const m = resolveModel(s);
+  if (!m) return null;
+  const userText = `The owner asks for your honest view on ONE coin (not a trade instruction). Explain the opportunity and the risks plainly for a beginner. ${langLine(s.language)}\n\n${JSON.stringify({
+    coin: compactCandidate(c),
+    market_context: await getMarketContext().catch(() => null),
+    briefing: state.briefing?.text ?? null,
+  })}`;
+  const { data } = await ask(m, "opinion", DECISION_SYSTEM, userText, OpinionSchema);
+  return data;
 }
 
 function logApiError(what: string, e: unknown) {

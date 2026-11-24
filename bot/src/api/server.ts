@@ -6,7 +6,8 @@ import { config } from "../config.js";
 import { addEvent, portfolio, save, state } from "../store.js";
 import { bot, positionPnlPct, positionValueEur } from "../engine/bot.js";
 import { breakers } from "../risk/rules.js";
-import { aiAvailable, aiBudgetLeft, aiOpinion, AI_MODELS } from "../ai/claude.js";
+import { aiAvailable, aiBudgetLeft, aiCanSpend, aiOpinion, briefingSupported } from "../ai/claude.js";
+import { availableModels, resolveModel } from "../ai/models.js";
 import { discoverCandidates, pairToCandidate } from "../market/discovery.js";
 import { getBestPairs, searchPairs } from "../market/dexscreener.js";
 import { buildSwapTx, getPrices, getQuote } from "../market/jupiter.js";
@@ -105,7 +106,10 @@ app.get("/api/bot/status", async (c) => {
     ai: {
       available: aiAvailable(),
       enabled: s.aiEnabled,
-      model: s.aiModel,
+      model: resolveModel(s)?.id ?? s.aiModel,
+      modelLabel: resolveModel(s)?.label ?? null,
+      free: resolveModel(s)?.free ?? false,
+      briefingSupported: briefingSupported(s),
       spentTodayUsd: state.aiSpend.usd,
       callsToday: state.aiSpend.calls,
       budgetUsd: s.aiDailyBudgetUsd,
@@ -166,7 +170,9 @@ app.post("/api/bot/scan", (c) => {
 });
 
 app.post("/api/bot/briefing", async (c) => {
-  if (!aiAvailable()) throw new UserError("No ANTHROPIC_API_KEY configured on the server.");
+  if (!briefingSupported(state.settings)) {
+    throw new UserError("The research briefing needs a Claude model (it uses Claude's web search). Other models use the free market data instead.");
+  }
   await bot.refreshBriefing();
   return c.json({ briefing: state.briefing ?? null });
 });
@@ -236,7 +242,7 @@ const SettingsPatch = z
     maxRugScore: z.number().min(0).max(100),
     maxPump24hPct: z.number().min(10).max(100_000),
     aiEnabled: z.boolean(),
-    aiModel: z.enum(AI_MODELS.map((m) => m.id) as [string, ...string[]]),
+    aiModel: z.string().refine((id) => availableModels().some((m) => m.id === id), "this AI model is not configured on the server"),
     aiEffort: z.enum(["low", "medium", "high"]),
     aiDailyBudgetUsd: z.number().min(0).max(100),
     aiIntervalMin: z.number().min(5).max(24 * 60),
@@ -248,8 +254,9 @@ const SettingsPatch = z
 
 app.get("/api/settings", (c) =>
   c.json({
-    settings: state.settings,
-    aiModels: AI_MODELS,
+    // Show the brain actually in use (the first configured one if the saved choice isn't available).
+    settings: { ...state.settings, aiModel: resolveModel(state.settings)?.id ?? state.settings.aiModel },
+    aiModels: availableModels().map((m) => ({ id: m.id, label: m.label, provider: m.provider, inUsd: m.inUsd, outUsd: m.outUsd, free: m.free })),
     aiAvailable: aiAvailable(),
     wallets: { bot: botKeypair.publicKey.toBase58(), owner: ownerWallet() ?? null, ownerLockedByServer: !!config.ownerWallet },
   }),
@@ -341,8 +348,8 @@ app.get("/api/token/:mint", async (c) => {
 
 app.post("/api/token/:mint/ai", async (c) => {
   const mint = addr.parse(c.req.param("mint"));
-  if (!aiAvailable()) throw new UserError("No ANTHROPIC_API_KEY configured on the server.");
-  if (aiBudgetLeft(state.settings) < 0.03) throw new UserError("Today's AI budget is used up.");
+  if (!aiAvailable()) throw new UserError("No AI is configured on the server (set ANTHROPIC_API_KEY, OLLAMA_MODELS, OPENROUTER_API_KEY or XAI_API_KEY).");
+  if (!aiCanSpend(state.settings, 0.03)) throw new UserError("Today's AI budget is used up.");
   const cand = await tokenDetail(mint);
   const opinion = await aiOpinion(cand, state.settings);
   if (!opinion) throw new UserError("The AI could not give an opinion right now. Try again later.");

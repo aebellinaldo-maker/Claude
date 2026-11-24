@@ -3,7 +3,7 @@ import { config } from "./config.js";
 import { app } from "./api/server.js";
 import { bot } from "./engine/bot.js";
 import { botKeypair } from "./chain/solana.js";
-import { aiAvailable } from "./ai/claude.js";
+import { resolveModel } from "./ai/models.js";
 import { state } from "./store.js";
 import { log } from "./util/log.js";
 
@@ -11,7 +11,8 @@ log.info("───────────────────────�
 log.info(" Crypto bot server");
 log.info(` Mode:        ${state.mode.toUpperCase()} (${state.running ? "running" : "stopped"})`);
 log.info(` Bot wallet:  ${botKeypair.publicKey.toBase58()}`);
-log.info(` AI:          ${aiAvailable() ? `on (${state.settings.aiModel})` : "off — set ANTHROPIC_API_KEY to enable"}`);
+const brain = resolveModel(state.settings);
+log.info(` AI:          ${brain ? `${brain.label}` : "off — set ANTHROPIC_API_KEY, OLLAMA_MODELS, OPENROUTER_API_KEY or XAI_API_KEY"}`);
 log.info(` RPC:         ${config.rpcUrl.replace(/api-key=[^&]+/, "api-key=***")}`);
 log.info(` API:         http://${config.host}:${config.port}  (token in data/api-token.txt or API_TOKEN)`);
 log.info("──────────────────────────────────────────────");

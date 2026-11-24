@@ -144,7 +144,9 @@ const en = {
   marketView: "AI market view",
   briefing: "AI research briefing",
   aiCostToday: "AI cost today",
-  aiOffNote: "No Anthropic API key on the server: the bot decides with its built-in rules.",
+  aiOffNote: "No AI brain configured on the server (Claude, Ollama, OpenRouter or Grok): the bot decides with its built-in rules.",
+  aiFree: "free",
+  aiCalls: "AI calls today",
   nextScan: "Next scan",
   lastScan: "Last scan",
   scanNow: "Scan now",
@@ -223,7 +225,7 @@ const en = {
   effort_medium: "Medium",
   effort_high: "High",
   aiCostNote:
-    "Each AI decision costs about $0.05 with Opus, $0.025 with Sonnet and $0.001 with Haiku. With €10 in the bot, that can cost more than the bot earns: keep the daily budget small or pick Haiku. When the budget is used up, the bot uses its rules.",
+    "Each AI decision costs about $0.05 with Claude Opus, $0.025 with Sonnet and $0.001 with Haiku. Models marked (free) — Ollama on your server or OpenRouter free models — cost nothing but are less smart. Only Claude models do web research; the others use free market data. When the daily budget is used up, the bot uses its rules.",
   about: "About",
   disclaimer:
     "Personal tool, not financial advice. Crypto and especially meme coins are extremely risky. No bot can guarantee profits.",
@@ -368,7 +370,9 @@ const de: Record<TKey, string> = {
   marketView: "KI-Marktsicht",
   briefing: "KI-Recherche",
   aiCostToday: "KI-Kosten heute",
-  aiOffNote: "Kein Anthropic-API-Schlüssel auf dem Server: Der Bot entscheidet mit seinen eingebauten Regeln.",
+  aiOffNote: "Keine KI auf dem Server eingerichtet (Claude, Ollama, OpenRouter oder Grok): Der Bot entscheidet mit seinen eingebauten Regeln.",
+  aiFree: "kostenlos",
+  aiCalls: "KI-Aufrufe heute",
   nextScan: "Nächster Scan",
   lastScan: "Letzter Scan",
   scanNow: "Jetzt scannen",
@@ -445,7 +449,7 @@ const de: Record<TKey, string> = {
   effort_medium: "Mittel",
   effort_high: "Hoch",
   aiCostNote:
-    "Eine KI-Entscheidung kostet ca. 0,05 $ mit Opus, 0,025 $ mit Sonnet und 0,001 $ mit Haiku. Bei 10 € im Bot kann das mehr kosten, als der Bot verdient: Budget klein halten oder Haiku wählen. Ist das Budget aufgebraucht, nutzt der Bot seine Regeln.",
+    "Eine KI-Entscheidung kostet ca. 0,05 $ mit Claude Opus, 0,025 $ mit Sonnet und 0,001 $ mit Haiku. Modelle mit (free) – Ollama auf deinem Server oder kostenlose OpenRouter-Modelle – kosten nichts, sind aber weniger schlau. Nur Claude-Modelle recherchieren im Web; die anderen nutzen kostenlose Marktdaten. Ist das Tagesbudget aufgebraucht, nutzt der Bot seine Regeln.",
   about: "Über",
   disclaimer:
     "Persönliches Tool, keine Finanzberatung. Krypto und besonders Meme-Coins sind extrem riskant. Kein Bot kann Gewinne garantieren.",

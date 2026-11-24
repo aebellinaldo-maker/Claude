@@ -57,7 +57,18 @@ export interface BotStatus {
   pnl: { startEur: number; totalEur: number; totalPct: number; dailyPct: number; drawdownPct: number; noNewBuys: boolean; breakerReason: string | null };
   positions: BotPosition[];
   wallets: { bot: string; owner: string | null };
-  ai: { available: boolean; enabled: boolean; model: string; spentTodayUsd: number; callsToday: number; budgetUsd: number; budgetLeftUsd: number };
+  ai: {
+    available: boolean;
+    enabled: boolean;
+    model: string;
+    modelLabel: string | null;
+    free: boolean;
+    briefingSupported: boolean;
+    spentTodayUsd: number;
+    callsToday: number;
+    budgetUsd: number;
+    budgetLeftUsd: number;
+  };
   briefing: { text: string; ts: number } | null;
   marketView: string | null;
   events: { ts: number; level: "info" | "warn" | "error"; msg: string }[];
@@ -233,7 +244,7 @@ export function createApi(serverUrl: string, token: string) {
     settings: () =>
       req<{
         settings: BotSettings;
-        aiModels: { id: string; label: string; inUsd: number; outUsd: number }[];
+        aiModels: { id: string; label: string; provider: string; inUsd: number; outUsd: number; free: boolean }[];
         aiAvailable: boolean;
         wallets: { bot: string; owner: string | null; ownerLockedByServer: boolean };
       }>("GET", "/api/settings"),

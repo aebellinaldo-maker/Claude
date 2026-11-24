@@ -227,11 +227,15 @@ export default function BotScreen() {
         ) : null}
         {s.ai.available ? (
           <Row>
-            <T small faint>
-              {t("aiCostToday")}: ${s.ai.spentTodayUsd.toFixed(3)} / ${s.ai.budgetUsd.toFixed(2)} · {s.ai.model}
+            <T small faint style={{ flex: 1 }}>
+              {s.ai.modelLabel ?? s.ai.model} ·{" "}
+              {s.ai.free
+                ? `${t("aiFree")} · ${s.ai.callsToday} ${t("aiCalls")}`
+                : `${t("aiCostToday")}: $${s.ai.spentTodayUsd.toFixed(3)} / $${s.ai.budgetUsd.toFixed(2)}`}
             </T>
-            <Spacer />
-            <Button title={t("refresh")} kind="ghost" small loading={busy === "brief"} onPress={() => void act("brief", api.refreshBriefing)} />
+            {s.ai.briefingSupported ? (
+              <Button title={t("refresh")} kind="ghost" small loading={busy === "brief"} onPress={() => void act("brief", api.refreshBriefing)} />
+            ) : null}
           </Row>
         ) : null}
       </Card>

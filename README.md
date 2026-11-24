@@ -27,7 +27,7 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 
 - **No bot can guarantee profit.** Most meme-coin traders lose money. The AI is good at reading data, trends and news, but it cannot predict a coin's price. Treat the €10 as money you're OK to lose, and test in paper mode first.
 - **Fees matter a lot with €10.** Card/PayPal providers charge roughly €2–4 per purchase and often have a €20–30 minimum. Each swap costs about €0.01 in network fees plus 0.1–1% slippage.
-- **AI costs money too.** Each AI decision costs about $0.05 with Claude Opus 5.5 (the default), $0.025 with Sonnet 5.5, or $0.001 with Haiku 5.5. The bot only asks the AI when a coin looks promising (and hourly to review open coins), and stops at a daily budget (default $0.50, then it uses its rules). With €10 in the bot, Haiku is the sensible choice. You can switch in Settings.
+- **AI costs money too — unless you use a free brain.** Each AI decision costs about $0.05 with Claude Opus 5.5, $0.025 with Sonnet 5.5, or $0.001 with Haiku 5.5. The bot only asks the AI when a coin looks promising (and hourly to review open coins), and stops at a daily budget (default $0.50, then it uses its rules). Free alternatives: an open model running in **Ollama on your own server**, or **OpenRouter's free models** (see [Choosing the AI brain](#choosing-the-ai-brain)). You switch in Settings.
 - **The bot wallet is a "hot wallet"**: its key is stored on your server. Only keep small amounts in it. The bot can only ever withdraw to *your* Phantom address.
 - This is a personal tool, not financial advice. Buying crypto through MoonPay/Transak means their identity check (KYC) and terms apply.
 
@@ -38,7 +38,7 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 ### Step 1 — Free 24/7 server (Oracle Cloud "Always Free")
 
 1. Create an account at <https://www.oracle.com/cloud/free/>. They ask for a card for verification. Always Free resources cost nothing.
-2. **Create a VM instance**: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex** (1 OCPU, 6 GB is plenty) or **VM.Standard.E2.1.Micro**. Download the SSH key they offer.
+2. **Create a VM instance**: image **Ubuntu 24.04**, shape **VM.Standard.A1.Flex**. Choose **4 OCPU / 24 GB** (the whole free allowance) if you want to run a free AI with Ollama on it; otherwise 1 OCPU / 6 GB is plenty. Download the SSH key they offer.
 3. In the instance's **VCN → Security List**, add ingress rules for **TCP 80** and **TCP 443** from `0.0.0.0/0`.
 4. Connect: `ssh -i your-key.key ubuntu@YOUR_SERVER_IP`, then:
    ```bash
@@ -56,7 +56,8 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 
 | Key | Needed? | Where |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | For AI decisions (without it the bot uses rules) | <https://console.anthropic.com> → API Keys (needs a few $ of prepaid credit) |
+| `ANTHROPIC_API_KEY` | For Claude AI decisions + web research | <https://console.anthropic.com> → API Keys (needs a few $ of prepaid credit) |
+| `OLLAMA_MODELS` / `OPENROUTER_API_KEY` / `XAI_API_KEY` | Optional — free or alternative AI brains | see [Choosing the AI brain](#choosing-the-ai-brain) |
 | `RPC_URL` | Recommended (faster, more reliable trades) | <https://www.helius.dev> free plan → mainnet RPC URL |
 | `MOONPAY_PUBLISHABLE_KEY` + `MOONPAY_SECRET_KEY` | Optional — pre-fills your wallet address in the buy page | <https://dashboard.moonpay.com> |
 | `TRANSAK_API_KEY` | Optional — second payment provider | <https://dashboard.transak.com> |
@@ -110,9 +111,34 @@ Defaults (all changeable in the app → Settings):
 | Max hold time | 24 h (if not up ≥10 %) |
 | Daily loss limit | −20 % → no new buys until tomorrow |
 | Kill switch | −50 % from the best value → sell everything and stop |
-| AI | Claude Opus 5.5, max $0.50/day, decides at most every 20 min, min. confidence 60 % |
+| AI | Claude Opus 5.5 if configured (else the first configured brain), max $0.50/day for paid models, decides at most every 20 min, min. confidence 60 % |
 
 ---
+
+## Choosing the AI brain
+
+Claude Opus 5.5 and Grok are closed models: they only run on Anthropic's / xAI's servers, so they can't be downloaded into Ollama (xAI published the old Grok 2.5's weights, but it's ~500 GB — far too big for a free server). What you *can* do:
+
+| Brain | Cost | How smart | Web research | Setup (in `bot/.env`) |
+|---|---|---|---|---|
+| **Claude Opus 5.5** | ~$0.05 / decision | best | ✅ news & narratives | `ANTHROPIC_API_KEY` |
+| **Claude Haiku 5.5** | ~$0.001 / decision | good | ✅ | `ANTHROPIC_API_KEY`, pick Haiku in Settings |
+| **Ollama on your server** | free, unlimited, private | basic–ok (small model, CPU) | free market data only | `OLLAMA_MODELS=<model>` |
+| **OpenRouter `:free` models** | free (50/day, or 1,000/day after a one-time $10) | ok–good (big open models) | free market data only | `OPENROUTER_API_KEY`, `OPENROUTER_MODELS=<id>:free` |
+| **Grok (xAI)** | paid, ~$0.20–2 per million input tokens | good | free market data only | `XAI_API_KEY`, `XAI_MODELS=<model>` |
+
+Every brain gets the same coin data, your recent results and free market-mood data (Crypto Fear & Greed Index, CoinGecko trending coins and categories). Only Claude also searches the web for a news briefing. Whatever the brain says, the safety filters and stop-losses still apply.
+
+**Free AI on the Oracle server with Ollama** (needs the 4 OCPU / 24 GB shape):
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull <model>        # pick a ~4–9B model from https://ollama.com/library (Qwen, Gemma, …)
+echo "OLLAMA_MODELS=<model>" >> ~/Claude/bot/.env
+sudo systemctl restart crypto-bot
+```
+
+Then choose it in the app → Settings → AI model. On a free 4-core CPU a ~9B model needs roughly 2–5 minutes per decision; that's fine because the bot decides at most every 20 minutes, and stop-losses keep running in parallel. There are community models on Ollama trained to imitate Claude Opus' reasoning (search "Opus distilled" on ollama.com) — they are small Qwen models, not the real Opus, so expect clearly weaker judgement.
 
 ## Project layout
 
@@ -120,7 +146,7 @@ Defaults (all changeable in the app → Settings):
 bot/    Bot server (TypeScript, Node 20+)
   src/market/   DexScreener, GeckoTerminal, RugCheck, Jupiter, prices
   src/risk/     safety filters, scoring, exit rules & circuit breakers
-  src/ai/       Claude decisions, web-research briefing, "ask the AI"
+  src/ai/       AI brains (Claude, Ollama, OpenRouter, Grok), web-research briefing, "ask the AI"
   src/engine/   bot loop, paper + real executors
   src/chain/    Solana wallet, balances, sending transactions
   src/api/      HTTP API for the app, card/PayPal on-ramp links
@@ -139,6 +165,6 @@ Tested here: all bot logic and safety rules (unit tests); live market data from 
 **Not testable from my build environment. Check these yourself with small amounts:**
 - the Phantom connect/sign flow on a real iPhone;
 - real-money swaps from the bot wallet;
-- live Claude API calls (needs your key);
+- live AI calls to Claude, Ollama, OpenRouter or Grok (only tested against mock servers here);
 - MoonPay URL signing with real keys;
 - the setup script on a real Oracle VM.

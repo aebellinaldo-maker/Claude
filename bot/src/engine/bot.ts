@@ -7,7 +7,7 @@ import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
 import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
 import { breakers, buySizeSol, exitSignal } from "../risk/rules.js";
-import { aiAvailable, aiBriefing, aiBudgetLeft, aiDecide } from "../ai/claude.js";
+import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
 import { getTokenHolding } from "../chain/solana.js";
 import { botKeypair } from "../chain/solana.js";
@@ -51,7 +51,11 @@ export function positionPnlPct(p: Position): number {
 
 class Bot {
   private timer?: NodeJS.Timeout;
-  private busy = false;
+  /** The protection loop and the scan/AI loop run independently, so a slow AI never delays a stop-loss. */
+  private monitorBusy = false;
+  private scanBusy = false;
+  /** Coins with a buy/sell in flight (prevents selling the same coin twice at once). */
+  private trading = new Set<string>();
   private lastBriefingTry = 0;
   /** Last computed equity, used by the API without hitting the RPC on every request. */
   lastEquity?: Equity;
@@ -60,8 +64,12 @@ class Bot {
 
   boot() {
     // The loop always runs: it protects open positions even while new buys are paused.
-    this.timer = setInterval(() => void this.tick(), 5_000);
-    void this.tick();
+    const tick = () => {
+      void this.tickMonitor();
+      void this.tickScan();
+    };
+    this.timer = setInterval(tick, 5_000);
+    tick();
   }
 
   shutdown() {
@@ -198,37 +206,50 @@ class Bot {
 
   // ---------------------------------------------------------------- main loop
 
-  private async tick() {
-    if (this.busy) return;
-    this.busy = true;
+  /** Every ~30 s: prices, stop-loss / take-profit, circuit breakers. */
+  private async tickMonitor() {
+    if (this.monitorBusy) return;
+    const s = state.settings;
+    if (state.lastMonitorAt && Date.now() - state.lastMonitorAt < s.monitorIntervalSec * 1000) return;
+    this.monitorBusy = true;
     try {
-      const s = state.settings;
-      const now = Date.now();
-      if (!state.lastMonitorAt || now - state.lastMonitorAt >= s.monitorIntervalSec * 1000) {
-        await this.monitor();
-        state.lastMonitorAt = Date.now();
-      }
-      if (state.running && !state.killSwitch.tripped) {
-        const briefingDue =
-          s.aiEnabled &&
-          aiAvailable() &&
-          (!state.briefing || now - state.briefing.ts >= s.briefingIntervalHours * 3_600_000) &&
-          now - this.lastBriefingTry > 30 * 60_000;
-        if (briefingDue) {
-          this.lastBriefingTry = now;
-          await this.refreshBriefing();
-        }
-        if (!state.lastScanAt || now - state.lastScanAt >= s.scanIntervalMin * 60_000) {
-          state.lastScanAt = Date.now();
-          await this.scan();
-        }
-      }
+      await this.monitor();
+      state.lastMonitorAt = Date.now();
       state.lastError = undefined;
     } catch (e) {
       state.lastError = errMsg(e);
-      log.error("Bot tick failed", e);
+      log.error("Monitor failed", e);
     } finally {
-      this.busy = false;
+      this.monitorBusy = false;
+      save();
+    }
+  }
+
+  /** Every scan interval: research briefing, discovery, AI decisions, buys. */
+  private async tickScan() {
+    if (this.scanBusy || !state.running || state.killSwitch.tripped) return;
+    this.scanBusy = true;
+    try {
+      const s = state.settings;
+      const now = Date.now();
+      const briefingDue =
+        s.aiEnabled &&
+        briefingSupported(s) &&
+        (!state.briefing || now - state.briefing.ts >= s.briefingIntervalHours * 3_600_000) &&
+        now - this.lastBriefingTry > 30 * 60_000;
+      if (briefingDue) {
+        this.lastBriefingTry = now;
+        await this.refreshBriefing();
+      }
+      if (!state.lastScanAt || now - state.lastScanAt >= s.scanIntervalMin * 60_000) {
+        state.lastScanAt = Date.now();
+        await this.scan();
+      }
+    } catch (e) {
+      state.lastError = errMsg(e);
+      log.error("Scan failed", e);
+    } finally {
+      this.scanBusy = false;
       save();
     }
   }
@@ -332,7 +353,7 @@ class Bot {
 
     // The AI is consulted only when it can add value, to keep API costs small:
     // a promising coin and a free slot, or an hourly review of open positions.
-    const aiReady = s.aiEnabled && aiAvailable() && aiBudgetLeft(s) >= 0.05;
+    const aiReady = s.aiEnabled && aiCanSpend(s);
     if (aiReady) {
       const sinceAi = now - (state.lastAiAt ?? 0);
       const promising = canBuy && passed.some((c) => (c.score ?? 0) >= 0.45);
@@ -384,6 +405,7 @@ class Bot {
           for (const d of buys) {
             const c = passed.find((x) => x.mint === d.mint);
             if (!c) continue; // AI can only pick from the vetted list
+            if (!state.running || state.killSwitch.tripped) break; // paused/panic while the AI was thinking
             await this.buy(c, d.sizePct, "ai", `${d.reason} (${l("AI confidence", "KI-Sicherheit")} ${Math.round(d.confidence * 100)}%)`);
           }
           if (!buys.length) addEvent("info", l(`AI decided not to buy anything: ${decision.marketView}`, `KI hat entschieden, nichts zu kaufen: ${decision.marketView}`));
@@ -397,6 +419,7 @@ class Bot {
     if (canBuy) {
       const picks = passed.filter((c) => (c.score ?? 0) >= 0.62).slice(0, Math.min(freeSlots, 1));
       for (const c of picks) {
+        if (!state.running || state.killSwitch.tripped) break;
         await this.buy(c, Math.round((c.score ?? 0.62) * 100), "rules", `${l("Rule score", "Regel-Score")} ${(c.score ?? 0).toFixed(2)}: ${describeBreakdown(c)}`);
       }
     }
@@ -405,6 +428,16 @@ class Bot {
   // ---------------------------------------------------------------- trading
 
   async buy(c: Candidate, sizePct: number, trigger: TradeTrigger, reason: string) {
+    if (this.trading.has(c.mint)) return;
+    this.trading.add(c.mint);
+    try {
+      await this.doBuy(c, sizePct, trigger, reason);
+    } finally {
+      this.trading.delete(c.mint);
+    }
+  }
+
+  private async doBuy(c: Candidate, sizePct: number, trigger: TradeTrigger, reason: string) {
     const s = state.settings;
     const p = portfolio();
     if (p.positions.length >= s.maxPositions) return;
@@ -480,6 +513,17 @@ class Bot {
   }
 
   async sell(pos: Position, pct: number, trigger: TradeTrigger, reason: string) {
+    // Skip if this coin is already being traded or was sold in the meantime.
+    if (this.trading.has(pos.mint) || !portfolio().positions.includes(pos)) return;
+    this.trading.add(pos.mint);
+    try {
+      await this.doSell(pos, pct, trigger, reason);
+    } finally {
+      this.trading.delete(pos.mint);
+    }
+  }
+
+  private async doSell(pos: Position, pct: number, trigger: TradeTrigger, reason: string) {
     const s = state.settings;
     const p = portfolio();
     try {
