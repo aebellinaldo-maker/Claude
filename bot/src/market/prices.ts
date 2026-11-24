@@ -46,6 +46,11 @@ export async function getSolPrice(): Promise<SolPrice> {
   throw new Error("SOL price unavailable");
 }
 
+/** Last known SOL price in EUR (0 before the first successful fetch). */
+export function lastSolEur(): number {
+  return cached?.eur ?? 0;
+}
+
 export function usdToEur(usd: number): number {
   return usd * (cached?.eurPerUsd ?? eurPerUsd);
 }

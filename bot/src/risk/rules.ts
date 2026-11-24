@@ -1,4 +1,5 @@
 import type { PortfolioState, Position, Settings, TradeTrigger } from "../types.js";
+import { L } from "../util/i18n.js";
 
 export type ExitSignal =
   | { action: "none" }
@@ -15,6 +16,7 @@ export function exitSignal(
   s: Settings,
 ): ExitSignal {
   if (!(priceUsd > 0) || !(pos.entryPriceUsd > 0)) return { action: "none" };
+  const l = (en: string, de: string) => L(s.language, en, de);
   const pnlPct = (priceUsd / pos.entryPriceUsd - 1) * 100;
   const peak = Math.max(pos.peakPriceUsd, priceUsd);
   const fromPeakPct = (1 - priceUsd / peak) * 100;
@@ -25,18 +27,24 @@ export function exitSignal(
       action: "sell",
       pct: 100,
       trigger: "rug_exit",
-      reason: `Liquidity dropped ${Math.round((1 - liquidityUsd / pos.entryLiquidityUsd) * 100)}% since entry (possible rug pull)`,
+      reason: l(
+        `Liquidity dropped ${Math.round((1 - liquidityUsd / pos.entryLiquidityUsd) * 100)}% since entry (possible rug pull)`,
+        `Liquidität seit dem Kauf um ${Math.round((1 - liquidityUsd / pos.entryLiquidityUsd) * 100)}% gefallen (möglicher Rug Pull)`,
+      ),
     };
   }
   if (pnlPct <= -s.stopLossPct) {
-    return { action: "sell", pct: 100, trigger: "stop_loss", reason: `Stop-loss hit (${pnlPct.toFixed(1)}%)` };
+    return { action: "sell", pct: 100, trigger: "stop_loss", reason: l(`Stop-loss hit (${pnlPct.toFixed(1)}%)`, `Stop-Loss ausgelöst (${pnlPct.toFixed(1)}%)`) };
   }
   if (!pos.tookProfit && pnlPct >= s.takeProfitPct) {
     return {
       action: "sell",
       pct: s.takeProfitSellPct,
       trigger: "take_profit",
-      reason: `Take-profit: +${pnlPct.toFixed(1)}%, selling ${s.takeProfitSellPct}% and letting the rest run`,
+      reason: l(
+        `Take-profit: +${pnlPct.toFixed(1)}%, selling ${s.takeProfitSellPct}% and letting the rest run`,
+        `Take-Profit: +${pnlPct.toFixed(1)}%, ${s.takeProfitSellPct}% verkauft, der Rest läuft weiter`,
+      ),
     };
   }
   // Trailing stop: after take-profit, or once a trade was well in profit, protect gains.
@@ -46,7 +54,10 @@ export function exitSignal(
       action: "sell",
       pct: 100,
       trigger: "trailing_stop",
-      reason: `Trailing stop: ${fromPeakPct.toFixed(1)}% below peak (P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)`,
+      reason: l(
+        `Trailing stop: ${fromPeakPct.toFixed(1)}% below peak (P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)`,
+        `Trailing-Stop: ${fromPeakPct.toFixed(1)}% unter dem Hoch (G&V ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)`,
+      ),
     };
   }
   const heldHours = (now - pos.openedAt) / 3_600_000;
@@ -55,7 +66,10 @@ export function exitSignal(
       action: "sell",
       pct: 100,
       trigger: "time_exit",
-      reason: `Held ${heldHours.toFixed(0)}h without a real move (${pnlPct.toFixed(1)}%), freeing the money`,
+      reason: l(
+        `Held ${heldHours.toFixed(0)}h without a real move (${pnlPct.toFixed(1)}%), freeing the money`,
+        `${heldHours.toFixed(0)} Std. ohne echte Bewegung gehalten (${pnlPct.toFixed(1)}%), Geld wird frei gemacht`,
+      ),
     };
   }
   return { action: "none" };
@@ -98,7 +112,11 @@ export function breakers(p: PortfolioState, equityEur: number, s: Settings): Bre
       dailyPnlPct,
       totalPnlPct,
       drawdownPct,
-      reason: `Value fell ${drawdownPct.toFixed(0)}% from its best (limit ${s.maxDrawdownPct}%)`,
+      reason: L(
+        s.language,
+        `Value fell ${drawdownPct.toFixed(0)}% from its best (limit ${s.maxDrawdownPct}%)`,
+        `Wert ist ${drawdownPct.toFixed(0)}% unter den Höchststand gefallen (Limit ${s.maxDrawdownPct}%)`,
+      ),
     };
   }
   if (p.day.startEquityEur > 0 && dailyPnlPct <= -s.maxDailyLossPct) {
@@ -108,7 +126,11 @@ export function breakers(p: PortfolioState, equityEur: number, s: Settings): Bre
       dailyPnlPct,
       totalPnlPct,
       drawdownPct,
-      reason: `Daily loss limit reached (${dailyPnlPct.toFixed(1)}%), no new buys until tomorrow`,
+      reason: L(
+        s.language,
+        `Daily loss limit reached (${dailyPnlPct.toFixed(1)}%), no new buys until tomorrow`,
+        `Tägliches Verlustlimit erreicht (${dailyPnlPct.toFixed(1)}%), keine neuen Käufe bis morgen`,
+      ),
     };
   }
   return { killSwitch: false, noNewBuys: false, dailyPnlPct, totalPnlPct, drawdownPct };

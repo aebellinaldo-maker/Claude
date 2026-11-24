@@ -39,10 +39,11 @@ export const DEFAULT_SETTINGS: Settings = {
   aiEnabled: true,
   aiModel: "claude-opus-5-5",
   aiEffort: "medium",
-  aiDailyBudgetUsd: 1,
+  aiDailyBudgetUsd: 0.5,
+  aiIntervalMin: 20,
   aiMinConfidence: 0.6,
   webResearch: true,
-  briefingIntervalHours: 6,
+  briefingIntervalHours: 12,
 };
 
 export function today(): string {

@@ -46,6 +46,8 @@ export interface Settings {
   aiModel: string;
   aiEffort: "low" | "medium" | "high";
   aiDailyBudgetUsd: number;
+  /** Minimum minutes between AI trading decisions (saves API costs). */
+  aiIntervalMin: number;
   aiMinConfidence: number;
   webResearch: boolean;
   briefingIntervalHours: number;
@@ -187,6 +189,7 @@ export interface BotState {
   mode: Mode;
   killSwitch: { tripped: boolean; reason?: string; at?: number };
   lastScanAt?: number;
+  lastAiAt?: number;
   lastMonitorAt?: number;
   lastError?: string;
   briefing?: { text: string; ts: number; lang: Lang };

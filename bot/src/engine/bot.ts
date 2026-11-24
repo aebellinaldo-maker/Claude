@@ -3,15 +3,18 @@ import { addEvent, portfolio, save, state, today } from "../store.js";
 import type { Candidate, Mode, PortfolioState, Position, Trade, TradeTrigger } from "../types.js";
 import { discoverCandidates, WATCHLIST } from "../market/discovery.js";
 import { getPrices, SOL_MINT } from "../market/jupiter.js";
-import { getSolPrice, usdToEur } from "../market/prices.js";
+import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
 import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
 import { breakers, buySizeSol, exitSignal } from "../risk/rules.js";
 import { aiAvailable, aiBriefing, aiBudgetLeft, aiDecide } from "../ai/claude.js";
-import { LiveExecutor, PaperExecutor, type Executor } from "./executor.js";
+import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
 import { getTokenHolding } from "../chain/solana.js";
 import { botKeypair } from "../chain/solana.js";
 import { log, errMsg } from "../util/log.js";
+import { L } from "../util/i18n.js";
+
+const l = (en: string, de: string) => L(state.settings.language, en, de);
 
 const paperExec = new PaperExecutor();
 const liveExec = new LiveExecutor();
@@ -34,8 +37,12 @@ function rawToUi(raw: string | bigint, decimals: number): number {
   return Number(BigInt(raw)) / 10 ** decimals;
 }
 
+/**
+ * What the position is worth: coins at the current price, plus the ~0.002 SOL
+ * token-account deposit that comes back when the position is fully sold.
+ */
 export function positionValueEur(p: Position): number {
-  return usdToEur(rawToUi(p.rawAmount, p.decimals) * p.lastPriceUsd);
+  return usdToEur(rawToUi(p.rawAmount, p.decimals) * p.lastPriceUsd) + TOKEN_ACCOUNT_RENT_SOL * lastSolEur();
 }
 
 export function positionPnlPct(p: Position): number {
@@ -65,7 +72,7 @@ class Bot {
   async start() {
     if (state.killSwitch.tripped) {
       state.killSwitch = { tripped: false };
-      addEvent("info", "Kill switch reset by owner");
+      addEvent("info", l("Kill switch reset by owner", "Not-Aus vom Besitzer zurückgesetzt"));
     }
     if (state.mode === "paper" && state.paper.positions.length === 0 && state.paper.solBalance <= 0) {
       await this.resetPaper();
@@ -86,13 +93,25 @@ class Bot {
     p.day = { date: today(), startEquityEur: eq.totalEur };
     state.running = true;
     state.lastScanAt = 0; // scan right away
-    addEvent("info", `Bot started in ${state.mode.toUpperCase()} mode with €${eq.totalEur.toFixed(2)}`);
+    addEvent(
+      "info",
+      l(
+        `Bot started in ${state.mode.toUpperCase()} mode with €${eq.totalEur.toFixed(2)}`,
+        `Bot gestartet (${state.mode === "paper" ? "Testgeld" : "Echtgeld"}) mit ${eq.totalEur.toFixed(2)} €`,
+      ),
+    );
     save(true);
   }
 
-  stop(reason = "Stopped by owner") {
+  stop(reason?: string) {
     state.running = false;
-    addEvent("info", `${reason}. Open positions are still protected by stop-loss/take-profit.`);
+    addEvent(
+      "info",
+      `${reason ?? l("Paused by owner", "Vom Besitzer pausiert")}. ${l(
+        "Open positions are still protected by stop-loss/take-profit.",
+        "Offene Positionen bleiben durch Stop-Loss/Take-Profit geschützt.",
+      )}`,
+    );
     save(true);
   }
 
@@ -104,7 +123,7 @@ class Bot {
       // Re-sync tracked positions with what is really in the wallet.
       await this.reconcileReal();
     }
-    addEvent("info", `Switched to ${mode.toUpperCase()} mode`);
+    addEvent("info", l(`Switched to ${mode.toUpperCase()} mode`, `Umgeschaltet auf ${mode === "paper" ? "Testgeld" : "Echtgeld"}`));
     save(true);
   }
 
@@ -119,7 +138,13 @@ class Bot {
     };
     state.trades = state.trades.filter((t) => t.mode !== "paper");
     state.equity = state.equity.filter((e) => e.mode !== "paper");
-    addEvent("info", `Paper account reset to €${state.settings.paperBudgetEur} (${state.paper.solBalance.toFixed(4)} SOL)`);
+    addEvent(
+      "info",
+      l(
+        `Paper account reset to €${state.settings.paperBudgetEur} (${state.paper.solBalance.toFixed(4)} SOL)`,
+        `Testkonto auf ${state.settings.paperBudgetEur} € zurückgesetzt (${state.paper.solBalance.toFixed(4)} SOL)`,
+      ),
+    );
     save(true);
   }
 
@@ -214,7 +239,7 @@ class Bot {
     const text = await aiBriefing(s);
     if (text) {
       state.briefing = { text, ts: Date.now(), lang: s.language };
-      addEvent("info", "New AI market briefing");
+      addEvent("info", l("New AI market briefing", "Neue KI-Marktrecherche"));
     }
   }
 
@@ -249,8 +274,8 @@ class Bot {
       const b = breakers(p, eq.totalEur, s);
       if (b.killSwitch && !state.killSwitch.tripped) {
         state.killSwitch = { tripped: true, reason: b.reason, at: Date.now() };
-        addEvent("error", `KILL SWITCH: ${b.reason}. Selling everything and stopping.`);
-        await this.sellAll("kill_switch", b.reason ?? "Kill switch");
+        addEvent("error", l(`KILL SWITCH: ${b.reason}. Selling everything and stopping.`, `NOT-AUS: ${b.reason}. Alles wird verkauft, Bot stoppt.`));
+        await this.sellAll("kill_switch", b.reason ?? l("Kill switch", "Not-Aus"));
         state.running = false;
       }
     }
@@ -305,9 +330,16 @@ class Bot {
     const canBuy = !b.noNewBuys && freeSlots > 0 && eq.cashSol - s.feeReserveSol >= s.minTradeSol;
     if (b.noNewBuys && b.reason) addEvent("warn", b.reason);
 
-    // Ask the AI if it's on, has budget, and there is something to decide.
-    const useAi = s.aiEnabled && aiAvailable() && aiBudgetLeft(s) >= 0.05 && (passed.length > 0 || p.positions.length > 0) && (canBuy || p.positions.length > 0);
-    if (useAi) {
+    // The AI is consulted only when it can add value, to keep API costs small:
+    // a promising coin and a free slot, or an hourly review of open positions.
+    const aiReady = s.aiEnabled && aiAvailable() && aiBudgetLeft(s) >= 0.05;
+    if (aiReady) {
+      const sinceAi = now - (state.lastAiAt ?? 0);
+      const promising = canBuy && passed.some((c) => (c.score ?? 0) >= 0.45);
+      const reviewDue = p.positions.length > 0 && sinceAi >= 60 * 60_000;
+      if (sinceAi < s.aiIntervalMin * 60_000 || !(promising || reviewDue)) return;
+      state.lastAiAt = now;
+
       const solPrice = (await getPrices([SOL_MINT]).catch(() => ({})) as Record<string, { priceChange24h?: number }>)[SOL_MINT];
       const decision = await aiDecide(
         {
@@ -352,20 +384,20 @@ class Bot {
           for (const d of buys) {
             const c = passed.find((x) => x.mint === d.mint);
             if (!c) continue; // AI can only pick from the vetted list
-            await this.buy(c, d.sizePct, "ai", `${d.reason} (AI confidence ${Math.round(d.confidence * 100)}%)`);
+            await this.buy(c, d.sizePct, "ai", `${d.reason} (${l("AI confidence", "KI-Sicherheit")} ${Math.round(d.confidence * 100)}%)`);
           }
-          if (!buys.length) addEvent("info", `AI decided not to buy anything: ${decision.marketView}`);
+          if (!buys.length) addEvent("info", l(`AI decided not to buy anything: ${decision.marketView}`, `KI hat entschieden, nichts zu kaufen: ${decision.marketView}`));
         }
         return;
       }
-      addEvent("warn", "AI unavailable this round, using rule-based decisions");
+      addEvent("warn", l("AI unavailable this round, using rule-based decisions", "KI diese Runde nicht verfügbar, Regeln entscheiden"));
     }
 
     // Rule-based fallback.
     if (canBuy) {
       const picks = passed.filter((c) => (c.score ?? 0) >= 0.62).slice(0, Math.min(freeSlots, 1));
       for (const c of picks) {
-        await this.buy(c, Math.round((c.score ?? 0.62) * 100), "rules", `Rule score ${(c.score ?? 0).toFixed(2)}: ${describeBreakdown(c)}`);
+        await this.buy(c, Math.round((c.score ?? 0.62) * 100), "rules", `${l("Rule score", "Regel-Score")} ${(c.score ?? 0).toFixed(2)}: ${describeBreakdown(c)}`);
       }
     }
   }
@@ -379,7 +411,7 @@ class Bot {
     const eq = await this.computeEquity();
     const solAmount = buySizeSol({ equitySol: eq.totalSol, freeSol: eq.cashSol, sizePct, s });
     if (solAmount <= 0) {
-      addEvent("info", `Skipped ${c.symbol}: not enough free SOL for a trade`);
+      addEvent("info", l(`Skipped ${c.symbol}: not enough free SOL for a trade`, `${c.symbol} übersprungen: nicht genug freie SOL`));
       return;
     }
     try {
@@ -433,9 +465,15 @@ class Bot {
         reason,
         signature: res.signature,
       });
-      addEvent("info", `BUY ${c.symbol} for ${res.solSpent.toFixed(4)} SOL (€${costEur.toFixed(2)}) — ${reason}`);
+      addEvent(
+        "info",
+        l(
+          `BUY ${c.symbol} for ${res.solSpent.toFixed(4)} SOL (€${costEur.toFixed(2)}) — ${reason}`,
+          `KAUF ${c.symbol} für ${res.solSpent.toFixed(4)} SOL (${costEur.toFixed(2)} €) — ${reason}`,
+        ),
+      );
     } catch (e) {
-      addEvent("warn", `Buy ${c.symbol} failed: ${errMsg(e)}`);
+      addEvent("warn", l(`Buy ${c.symbol} failed: ${errMsg(e)}`, `Kauf ${c.symbol} fehlgeschlagen: ${errMsg(e)}`));
       state.cooldowns[c.mint] = Date.now() + 60 * 60_000;
     }
     save();
@@ -484,10 +522,13 @@ class Bot {
       });
       addEvent(
         pnlEur >= 0 ? "info" : "warn",
-        `SELL ${Math.round(fraction * 100)}% ${pos.symbol} for €${valueEur.toFixed(2)} (${pnlEur >= 0 ? "+" : ""}€${pnlEur.toFixed(2)}, ${pnlPct.toFixed(1)}%) — ${reason}`,
+        l(
+          `SELL ${Math.round(fraction * 100)}% ${pos.symbol} for €${valueEur.toFixed(2)} (${pnlEur >= 0 ? "+" : ""}€${pnlEur.toFixed(2)}, ${pnlPct.toFixed(1)}%) — ${reason}`,
+          `VERKAUF ${Math.round(fraction * 100)}% ${pos.symbol} für ${valueEur.toFixed(2)} € (${pnlEur >= 0 ? "+" : ""}${pnlEur.toFixed(2)} €, ${pnlPct.toFixed(1)}%) — ${reason}`,
+        ),
       );
     } catch (e) {
-      addEvent("error", `Sell ${pos.symbol} failed: ${errMsg(e)}`);
+      addEvent("error", l(`Sell ${pos.symbol} failed: ${errMsg(e)}`, `Verkauf ${pos.symbol} fehlgeschlagen: ${errMsg(e)}`));
     }
     save();
   }
@@ -499,8 +540,8 @@ class Bot {
 
   async panic() {
     state.running = false;
-    addEvent("warn", "PANIC SELL: selling everything and stopping the bot");
-    await this.sellAll("panic", "Panic sell by owner");
+    addEvent("warn", l("PANIC SELL: selling everything and stopping the bot", "NOTVERKAUF: alles wird verkauft, Bot stoppt"));
+    await this.sellAll("panic", l("Panic sell by owner", "Notverkauf durch Besitzer"));
     save(true);
   }
 
@@ -508,7 +549,7 @@ class Bot {
   async manualSell(mint: string, pct: number) {
     const pos = portfolio().positions.find((x) => x.mint === mint);
     if (!pos) throw new Error("Position not found");
-    await this.sell(pos, pct, "manual", "Sold manually by owner");
+    await this.sell(pos, pct, "manual", l("Sold manually by owner", "Manuell vom Besitzer verkauft"));
   }
 
   private recordTrade(t: Omit<Trade, "id" | "ts" | "mode">) {
@@ -526,7 +567,19 @@ function describeBreakdown(c: Candidate): string {
     .sort((x, y) => y[1] - x[1])
     .slice(0, 2)
     .map(([k]) => k);
-  return `strongest signals: ${top.join(", ")}; 1h ${c.priceChange.h1.toFixed(1)}%, 24h vol $${Math.round(c.volume.h24 / 1000)}k`;
+  const names: Record<string, [string, string]> = {
+    momentum: ["momentum", "Momentum"],
+    buyPressure: ["buy pressure", "Kaufdruck"],
+    volume: ["rising volume", "steigendes Volumen"],
+    liquidity: ["deep liquidity", "hohe Liquidität"],
+    hype: ["hype/marketing", "Hype/Marketing"],
+    safety: ["safety", "Sicherheit"],
+  };
+  const de = state.settings.language === "de";
+  const labels = top.map((k) => (names[k] ? names[k][de ? 1 : 0] : k));
+  return de
+    ? `stärkste Signale: ${labels.join(", ")}; 1h ${c.priceChange.h1.toFixed(1)}%, 24h-Vol. $${Math.round(c.volume.h24 / 1000)}k`
+    : `strongest signals: ${labels.join(", ")}; 1h ${c.priceChange.h1.toFixed(1)}%, 24h vol $${Math.round(c.volume.h24 / 1000)}k`;
 }
 
 export const bot = new Bot();

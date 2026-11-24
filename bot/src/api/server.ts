@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { z } from "zod";
 import { config } from "../config.js";
 import { addEvent, portfolio, save, state } from "../store.js";
@@ -24,6 +25,7 @@ import {
 import { availableProviders, onrampUrl } from "./onramp.js";
 import type { Candidate } from "../types.js";
 import { TtlCache } from "../util/http.js";
+import { L } from "../util/i18n.js";
 
 class UserError extends Error {}
 
@@ -35,11 +37,15 @@ app.onError((err, c) => {
   return c.json({ error: message }, status);
 });
 
+// Lets the app also run in a web browser. Safe: every endpoint still requires the API token
+// (sent as a header, never as a cookie), so other websites can't use your bot.
+app.use("/api/*", cors({ origin: "*", allowHeaders: ["authorization", "content-type"], allowMethods: ["GET", "POST", "PUT"] }));
+
 app.get("/api/health", (c) => c.json({ ok: true, name: "crypto-bot-server", time: Date.now() }));
 
 // Every other endpoint needs the API token (Authorization: Bearer <token>).
 app.use("/api/*", async (c, next) => {
-  if (c.req.path === "/api/health") return next();
+  if (c.req.path === "/api/health" || c.req.method === "OPTIONS") return next();
   const header = c.req.header("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const a = Buffer.from(token);
@@ -63,6 +69,7 @@ app.get("/api/bot/status", async (c) => {
   const b = breakers(p, eq.totalEur, s);
   return c.json({
     running: state.running,
+    paperBudgetEur: s.paperBudgetEur,
     mode: state.mode,
     killSwitch: state.killSwitch,
     lastScanAt: state.lastScanAt ?? null,
@@ -194,7 +201,7 @@ app.post("/api/bot/withdraw", async (c) => {
   const amount = Math.min(body.sol ?? max, max);
   if (amount <= 0.0001) throw new UserError("Nothing to withdraw.");
   const signature = await botTransferSol(owner, Math.floor(amount * 1e9));
-  addEvent("info", `Withdrew ${amount.toFixed(4)} SOL to your Phantom wallet`);
+  addEvent("info", L(state.settings.language, `Withdrew ${amount.toFixed(4)} SOL to your Phantom wallet`, `${amount.toFixed(4)} SOL an dein Phantom-Wallet ausgezahlt`));
   if (state.mode === "real") await bot.resetBaseline();
   return c.json({ ok: true, signature, sol: amount });
 });
@@ -232,6 +239,7 @@ const SettingsPatch = z
     aiModel: z.enum(AI_MODELS.map((m) => m.id) as [string, ...string[]]),
     aiEffort: z.enum(["low", "medium", "high"]),
     aiDailyBudgetUsd: z.number().min(0).max(100),
+    aiIntervalMin: z.number().min(5).max(24 * 60),
     aiMinConfidence: z.number().min(0).max(1),
     webResearch: z.boolean(),
     briefingIntervalHours: z.number().min(1).max(48),
@@ -265,7 +273,7 @@ app.post("/api/owner", async (c) => {
     );
   } else if (!state.ownerWallet) {
     state.ownerWallet = wallet;
-    addEvent("info", `Owner wallet registered: ${wallet.slice(0, 4)}…${wallet.slice(-4)}`);
+    addEvent("info", L(state.settings.language, "Owner wallet registered", "Besitzer-Wallet registriert") + `: ${wallet.slice(0, 4)}…${wallet.slice(-4)}`);
   }
   return c.json({ owner: ownerWallet() });
 });
@@ -391,18 +399,25 @@ const SwapReq = z.object({
 app.post("/api/swap/quote", async (c) => {
   const r = SwapReq.parse(await c.req.json());
   const q = await getQuote(r);
-  return c.json({ quote: summarizeQuote(q) });
+  return c.json({ quote: await summarizeQuote(q) });
 });
 
 app.post("/api/swap/build", async (c) => {
   const r = SwapReq.extend({ userPublicKey: addr }).parse(await c.req.json());
   const q = await getQuote(r);
   const tx = await buildSwapTx(q, r.userPublicKey);
-  return c.json({ transaction: tx.swapTransaction, quote: summarizeQuote(q), simulationError: tx.simulationError ?? null });
+  return c.json({ transaction: tx.swapTransaction, quote: await summarizeQuote(q), simulationError: tx.simulationError ?? null });
 });
 
-function summarizeQuote(q: Awaited<ReturnType<typeof getQuote>>) {
+async function summarizeQuote(q: Awaited<ReturnType<typeof getQuote>>) {
+  const prices = await getPrices([q.inputMint, q.outputMint]).catch(() => ({}) as Awaited<ReturnType<typeof getPrices>>);
+  const inDecimals = prices[q.inputMint]?.decimals ?? null;
+  const outDecimals = prices[q.outputMint]?.decimals ?? null;
+  const outPrice = prices[q.outputMint]?.usdPrice;
   return {
+    inDecimals,
+    outDecimals,
+    outValueUsd: outPrice && outDecimals !== null ? (Number(q.outAmount) / 10 ** outDecimals) * outPrice : null,
     inputMint: q.inputMint,
     outputMint: q.outputMint,
     inAmount: q.inAmount,
