@@ -1,0 +1,34 @@
+{
+  "name": "crypto-bot-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "24/7 Solana meme coin trading bot with AI + safety rules, controlled from the iPhone app",
+  "type": "module",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "DATA_DIR=./.test-data tsx --test test/*.test.ts",
+    "scan": "tsx scripts/scan-once.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0",
+    "@hono/node-server": "^1.19.19",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/web3.js": "^1.99.0",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.21",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
