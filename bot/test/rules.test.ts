@@ -146,3 +146,31 @@ test("scoring prefers strong momentum + buy pressure over a dumping coin", () =>
   assert.ok(good > bad, `${good} should be > ${bad}`);
   assert.ok(good > 0 && good <= 1);
 });
+
+import { autoStopReason, tradeable } from "../src/risk/rules.ts";
+
+test("real-money budget caps what the bot can trade", () => {
+  const eq = { cashSol: 1, totalSol: 1, positionsEur: 0, solEur: 65 }; // €65 in the wallet
+  // No budget → the whole wallet.
+  assert.deepEqual(tradeable(eq, s, "real"), { equitySol: 1, freeSol: 1 });
+  // €13 budget → acts as if it had 0.2 SOL (+ fee reserve on top).
+  const r = tradeable(eq, { ...s, realBudgetEur: 13 }, "real");
+  assert.ok(Math.abs(r.equitySol - 0.2) < 1e-9);
+  assert.ok(Math.abs(r.freeSol - (0.2 + s.feeReserveSol)) < 1e-9);
+  // €6.50 already invested → only the rest of the budget is free.
+  const r2 = tradeable({ ...eq, positionsEur: 6.5 }, { ...s, realBudgetEur: 13 }, "real");
+  assert.ok(Math.abs(r2.freeSol - (0.1 + s.feeReserveSol)) < 1e-9);
+  // Paper mode ignores the real-money budget.
+  assert.deepEqual(tradeable(eq, { ...s, realBudgetEur: 13 }, "paper"), { equitySol: 1, freeSol: 1 });
+});
+
+test("auto-stop: profit target, loss limit and end time", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(autoStopReason(50, now, s), null); // all off by default
+  assert.ok(autoStopReason(21, now, { ...s, stopAtProfitPct: 20 }));
+  assert.equal(autoStopReason(19, now, { ...s, stopAtProfitPct: 20 }), null);
+  assert.ok(autoStopReason(-10, now, { ...s, stopAtLossPct: 10 }));
+  assert.equal(autoStopReason(-9, now, { ...s, stopAtLossPct: 10 }), null);
+  assert.ok(autoStopReason(0, now, { ...s, stopAt: now - 1 }));
+  assert.equal(autoStopReason(0, now, { ...s, stopAt: now + 60_000 }), null);
+});

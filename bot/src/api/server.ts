@@ -232,6 +232,11 @@ const SettingsPatch = z
   .object({
     language: z.enum(["en", "de"]),
     paperBudgetEur: z.number().min(1).max(100_000),
+    realBudgetEur: z.number().min(0).max(1_000_000),
+    stopAtProfitPct: z.number().min(0).max(100_000),
+    stopAtLossPct: z.number().min(0).max(100),
+    stopAt: z.number().min(0),
+    closeOnStop: z.boolean(),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),
     maxPositions: z.number().int().min(1).max(10),

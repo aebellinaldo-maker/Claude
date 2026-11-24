@@ -7,6 +7,11 @@ import { log } from "./util/log.js";
 export const DEFAULT_SETTINGS: Settings = {
   language: "en",
   paperBudgetEur: 10,
+  realBudgetEur: 0,
+  stopAtProfitPct: 0,
+  stopAtLossPct: 0,
+  stopAt: 0,
+  closeOnStop: true,
 
   scanIntervalMin: 3,
   monitorIntervalSec: 15,

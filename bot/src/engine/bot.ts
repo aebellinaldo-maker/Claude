@@ -6,7 +6,7 @@ import { getPrices, SOL_MINT } from "../market/jupiter.js";
 import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
 import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
-import { breakers, buySizeSol, exitSignal } from "../risk/rules.js";
+import { autoStopReason, breakers, buySizeSol, exitSignal, tradeable } from "../risk/rules.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
 import { getTokenHolding } from "../chain/solana.js";
@@ -307,6 +307,21 @@ class Bot {
         await this.sellAll("kill_switch", b.reason ?? l("Kill switch", "Not-Aus"));
         state.running = false;
       }
+      // The owner's own stop conditions (profit target, loss limit, end time).
+      // With a real-money budget, measure profit/loss against the budget, not the whole wallet.
+      const basis = state.mode === "real" && s.realBudgetEur > 0 ? Math.min(p.startEquityEur, s.realBudgetEur) : p.startEquityEur;
+      const pnlPct = basis > 0 ? ((eq.totalEur - p.startEquityEur) / basis) * 100 : 0;
+      const stopReason = state.running && p.startEquityEur > 0 ? autoStopReason(pnlPct, Date.now(), s) : null;
+      if (stopReason) {
+        state.running = false;
+        s.stopAt = 0; // a planned end time is used once
+        if (s.closeOnStop) {
+          addEvent("info", l(`AUTO-STOP: ${stopReason}. Selling everything.`, `AUTO-STOPP: ${stopReason}. Alles wird verkauft.`));
+          await this.sellAll("auto_stop", stopReason);
+        } else {
+          addEvent("info", l(`AUTO-STOP: ${stopReason}. No new buys; open coins stay protected.`, `AUTO-STOPP: ${stopReason}. Keine neuen Käufe; offene Coins bleiben geschützt.`));
+        }
+      }
     }
   }
 
@@ -363,7 +378,8 @@ class Bot {
     }
 
     const freeSlots = Math.max(0, s.maxPositions - p.positions.length);
-    const canBuy = !b.noNewBuys && freeSlots > 0 && eq.cashSol - s.feeReserveSol >= s.minTradeSol;
+    const room = tradeable(eq, s, state.mode);
+    const canBuy = !b.noNewBuys && freeSlots > 0 && room.freeSol - s.feeReserveSol >= s.minTradeSol;
     if (b.noNewBuys && b.reason) addEvent("warn", b.reason);
 
     // Own trained model as the brain: buy what it rates above its tested threshold.
@@ -490,7 +506,8 @@ class Bot {
     const p = portfolio();
     if (p.positions.length >= s.maxPositions) return;
     const eq = await this.computeEquity();
-    const solAmount = buySizeSol({ equitySol: eq.totalSol, freeSol: eq.cashSol, sizePct, s });
+    const room = tradeable(eq, s, state.mode);
+    const solAmount = buySizeSol({ equitySol: room.equitySol, freeSol: room.freeSol, sizePct, s });
     if (solAmount <= 0) {
       addEvent("info", l(`Skipped ${c.symbol}: not enough free SOL for a trade`, `${c.symbol} übersprungen: nicht genug freie SOL`));
       return;

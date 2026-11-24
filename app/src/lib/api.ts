@@ -95,6 +95,11 @@ export interface Trade {
 export interface BotSettings {
   language: "en" | "de";
   paperBudgetEur: number;
+  realBudgetEur: number;
+  stopAtProfitPct: number;
+  stopAtLossPct: number;
+  stopAt: number;
+  closeOnStop: boolean;
   scanIntervalMin: number;
   monitorIntervalSec: number;
   maxPositions: number;

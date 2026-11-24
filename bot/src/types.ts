@@ -5,6 +5,18 @@ export interface Settings {
   language: Lang;
   /** Paper trading uses a fake balance at real prices. */
   paperBudgetEur: number;
+  /** Real money: the most the bot may use, in EUR (0 = everything in the bot wallet). */
+  realBudgetEur: number;
+
+  // --- auto-stop ("when to close") ---
+  /** Stop when total profit reaches this % (0 = off). */
+  stopAtProfitPct: number;
+  /** Stop when total loss reaches this % (0 = off). */
+  stopAtLossPct: number;
+  /** Stop at this time (unix ms, 0 = off). */
+  stopAt: number;
+  /** When an auto-stop triggers: sell everything (true) or only stop buying (false). */
+  closeOnStop: boolean;
 
   // --- timing ---
   scanIntervalMin: number;
@@ -90,7 +102,8 @@ export type TradeTrigger =
   | "panic"
   | "kill_switch"
   | "manual"
-  | "ml";
+  | "ml"
+  | "auto_stop";
 
 export interface Trade {
   id: string;

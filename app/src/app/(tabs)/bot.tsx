@@ -9,6 +9,7 @@ import { eur, pct, timeAgo } from "../../lib/format";
 import { colors, pnlColor } from "../../lib/theme";
 import { Big, Button, Card, Divider, H, Loading, Note, Pill, Row, Screen, Spacer, Sparkline, T, TokenAvatar } from "../../components/ui";
 import { OwnModelCard } from "../../components/own-model-card";
+import { BudgetCard } from "../../components/budget-card";
 
 export default function BotScreen() {
   const { t, lang, api, hasServer } = useApp();
@@ -162,6 +163,9 @@ export default function BotScreen() {
           )}
         </Row>
       </Card>
+
+      <H>{t("budgetTitle")}</H>
+      <BudgetCard mode={s.mode} running={s.running} onChanged={() => void status.reload()} />
 
       <H>{t("positions")}</H>
       <Card style={{ paddingVertical: 6 }}>

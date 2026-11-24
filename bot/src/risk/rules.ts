@@ -89,6 +89,40 @@ export function buySizeSol(opts: { equitySol: number; freeSol: number; sizePct: 
   return Math.floor(size * 1e6) / 1e6;
 }
 
+/**
+ * How much of the wallet the bot may trade with. In real mode the owner can cap it
+ * (realBudgetEur): the bot then acts as if it only had that much.
+ */
+export function tradeable(
+  eq: { cashSol: number; totalSol: number; positionsEur: number; solEur: number },
+  s: Settings,
+  mode: "paper" | "real",
+): { equitySol: number; freeSol: number } {
+  if (mode !== "real" || !(s.realBudgetEur > 0) || !(eq.solEur > 0)) {
+    return { equitySol: eq.totalSol, freeSol: eq.cashSol };
+  }
+  const budgetSol = s.realBudgetEur / eq.solEur;
+  const investedSol = eq.positionsEur / eq.solEur;
+  // The fee reserve stays on top of the budget (buySizeSol subtracts it again).
+  const freeSol = Math.min(eq.cashSol, Math.max(0, budgetSol - investedSol) + s.feeReserveSol);
+  return { equitySol: Math.min(eq.totalSol, budgetSol), freeSol };
+}
+
+/** Owner-set auto-stop: profit target, loss limit or end time. Returns the reason, or null. */
+export function autoStopReason(totalPnlPct: number, now: number, s: Settings): string | null {
+  const l = (en: string, de: string) => L(s.language, en, de);
+  if (s.stopAtProfitPct > 0 && totalPnlPct >= s.stopAtProfitPct) {
+    return l(`Profit target reached (+${totalPnlPct.toFixed(1)}%)`, `Gewinnziel erreicht (+${totalPnlPct.toFixed(1)}%)`);
+  }
+  if (s.stopAtLossPct > 0 && totalPnlPct <= -s.stopAtLossPct) {
+    return l(`Loss limit reached (${totalPnlPct.toFixed(1)}%)`, `Verlustgrenze erreicht (${totalPnlPct.toFixed(1)}%)`);
+  }
+  if (s.stopAt > 0 && now >= s.stopAt) {
+    return l("Planned end time reached", "Geplante Endzeit erreicht");
+  }
+  return null;
+}
+
 export interface BreakerStatus {
   killSwitch: boolean;
   noNewBuys: boolean;

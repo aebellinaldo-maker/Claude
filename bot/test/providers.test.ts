@@ -84,7 +84,9 @@ test("jsonSchemaFor makes every object strict", () => {
 
 test("models from the environment show up, free ones marked free", () => {
   const ids = availableModels().map((m) => m.id);
-  assert.deepEqual(ids, ["ollama/qwen-test:9b", "xai/grok-test"]);
+  // The bot's own model (shipped in ml/pretrained-model.json) is always listed last.
+  assert.deepEqual(ids.filter((id) => id !== "ml/pilot"), ["ollama/qwen-test:9b", "xai/grok-test"]);
+  assert.equal(ids[ids.length - 1], "ml/pilot");
   assert.equal(availableModels()[0].free, true);
   assert.equal(availableModels()[1].free, false);
   // Settings still say claude-opus-5-5 (no key here) → falls back to the first available model.
