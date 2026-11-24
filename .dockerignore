@@ -1,0 +1,10 @@
+**/node_modules
+**/.git
+bot/data
+bot/.test-data
+bot/.ml-data
+bot/ml/.venv
+bot/dist
+app/dist
+app/.expo
+**/.env

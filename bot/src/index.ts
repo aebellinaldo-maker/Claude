@@ -18,6 +18,16 @@ log.info(` API:         http://${config.host}:${config.port}  (token in data/api
 log.info("──────────────────────────────────────────────");
 
 serve({ fetch: app.fetch, port: config.port, hostname: config.host });
+
+// Free hosts like Render put a service to sleep after ~15 minutes without visits, which
+// would stop the bot. Render tells us our public address; visit it every 10 minutes.
+const publicUrl = process.env.RENDER_EXTERNAL_URL ?? process.env.KEEPALIVE_URL;
+if (publicUrl) {
+  setInterval(() => {
+    fetch(`${publicUrl.replace(/\/+$/, "")}/api/health`).catch(() => undefined);
+  }, 10 * 60_000);
+  log.info(` Keep-alive:  pinging ${publicUrl} every 10 minutes`);
+}
 bot.boot();
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) {
