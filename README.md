@@ -8,6 +8,8 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 - **Bot** – a trading bot that runs 24/7 on a free server with its own small wallet (e.g. €10). It finds trending coins, filters out scams, lets **Claude (AI)** pick trades using live market data and a daily web-research briefing, and protects the money with hard rules (stop-loss, take-profit, daily loss limit, kill switch). **Paper mode** tests it with fake money at real prices first.
 - English + German.
 
+![Market and Bot screens (browser preview at iPhone size, German)](docs/app-preview.png)
+
 ```
  iPhone app (Expo)                 Bot server (Node.js, free cloud VM, 24/7)
  ┌─────────────────┐  HTTPS+token  ┌──────────────────────────────────────────┐
