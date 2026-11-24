@@ -359,7 +359,7 @@ class Bot {
     // archive growing, which is what the own model learns from.
     for (const c of passed) await analyzeChart(c);
     for (const pos of p.positions) {
-      if (pos.pool) await updateArchive({ pool: pos.pool, mint: pos.mint, symbol: pos.symbol }, 1);
+      if (pos.pool) await updateArchive({ pool: pos.pool, mint: pos.mint, symbol: pos.symbol }, 1, false);
     }
 
     const freeSlots = Math.max(0, s.maxPositions - p.positions.length);

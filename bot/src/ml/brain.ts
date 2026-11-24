@@ -12,7 +12,7 @@ import { getModel, predict } from "./model.js";
  * the chart analysis and the own model's probability to the candidate.
  */
 export async function analyzeChart(c: Candidate): Promise<void> {
-  const a = await updateArchive({ pool: c.pairAddress, mint: c.mint, symbol: c.symbol, createdAt: c.pairCreatedAt || undefined }, 1);
+  const a = await updateArchive({ pool: c.pairAddress, mint: c.mint, symbol: c.symbol, createdAt: c.pairCreatedAt || undefined }, 1, false);
   if (!a || !a.candles.length) return;
   const grid = toGrid(a.candles);
   const nowSec = Date.now() / 1000;

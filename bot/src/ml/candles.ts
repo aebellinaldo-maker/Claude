@@ -30,13 +30,14 @@ fs.mkdirSync(DIR, { recursive: true });
 
 const MAX_CANDLES = 6 * 24 * 4 * 30; // keep ~180 days per coin
 
-async function geckoGet<T>(url: string): Promise<T> {
+async function geckoGet<T>(url: string, patient: boolean): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await fetchJson<T>(url, { retries: 1, timeoutMs: 20_000 });
+      return await fetchJson<T>(url, { retries: patient ? 1 : 0, timeoutMs: 20_000 });
     } catch (e) {
-      // The free API allows ~30 calls/minute; on 429 wait and try again.
-      if (e instanceof HttpError && e.status === 429 && attempt < 3) {
+      // The free API allows ~30 calls/minute. Training waits out a 429; live scans don't
+      // (they fall back to the archived chart instead of stalling).
+      if (patient && e instanceof HttpError && e.status === 429 && attempt < 3) {
         await new Promise((r) => setTimeout(r, 20_000 * (attempt + 1)));
         continue;
       }
@@ -46,11 +47,12 @@ async function geckoGet<T>(url: string): Promise<T> {
 }
 
 /** Up to 1000 fifteen-minute candles ending before `beforeSec` (or now), oldest first. */
-export async function fetchCandles(pool: string, opts: { limit?: number; beforeSec?: number } = {}): Promise<Candle[]> {
+export async function fetchCandles(pool: string, opts: { limit?: number; beforeSec?: number; patient?: boolean } = {}): Promise<Candle[]> {
   const qs = new URLSearchParams({ aggregate: "15", limit: String(opts.limit ?? 1000), currency: "usd" });
   if (opts.beforeSec) qs.set("before_timestamp", String(opts.beforeSec));
   const r = await geckoGet<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(
     `https://api.geckoterminal.com/api/v2/networks/solana/pools/${pool}/ohlcv/minute?${qs}`,
+    opts.patient ?? true,
   );
   const list = r?.data?.attributes?.ohlcv_list ?? [];
   return list
@@ -95,7 +97,11 @@ export function mergeCandles(a: Candle[], b: Candle[]): Candle[] {
  * Brings a coin's archive up to date and returns it. New coins get ~20 days of
  * history (two requests); known coins only fetch what's new (one small request).
  */
-export async function updateArchive(info: { pool: string; mint: string; symbol: string; createdAt?: number }, backfillPages = 2): Promise<Archive | null> {
+export async function updateArchive(
+  info: { pool: string; mint: string; symbol: string; createdAt?: number },
+  backfillPages = 2,
+  patient = true,
+): Promise<Archive | null> {
   try {
     const existing = loadArchive(info.pool);
     let candles: Candle[];
@@ -103,12 +109,12 @@ export async function updateArchive(info: { pool: string; mint: string; symbol: 
       const last = existing.candles[existing.candles.length - 1][0];
       const missing = Math.ceil((Date.now() / 1000 - last) / STEP_SEC) + 2;
       if (missing <= 1) return existing;
-      const fresh = await fetchCandles(info.pool, { limit: Math.min(1000, Math.max(10, missing)) });
+      const fresh = await fetchCandles(info.pool, { limit: Math.min(1000, Math.max(10, missing)), patient });
       candles = mergeCandles(existing.candles, fresh);
     } else {
-      candles = await fetchCandles(info.pool);
+      candles = await fetchCandles(info.pool, { patient });
       for (let p = 1; p < backfillPages && candles.length >= 900; p++) {
-        const older = await fetchCandles(info.pool, { beforeSec: candles[0][0] });
+        const older = await fetchCandles(info.pool, { beforeSec: candles[0][0], patient });
         if (!older.length) break;
         candles = mergeCandles(older, candles);
       }
