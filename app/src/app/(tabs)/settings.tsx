@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Alert, Switch, View } from "react-native";
+import { Platform, Switch, View } from "react-native";
+import { Alert } from "../../lib/alert";
+import * as Clipboard from "expo-clipboard";
+import { ServerKeysCard } from "../../components/server-keys-card";
 import { useApp } from "../../lib/app-context";
 import type { BotSettings } from "../../lib/api";
 import type { TKey } from "../../lib/i18n";
@@ -129,6 +132,25 @@ export default function SettingsScreen() {
         ) : null}
       </Card>
 
+      {Platform.OS === "web" && hasServer && conn === "ok" ? (
+        <>
+          <H>🔗 {t("privateLink")}</H>
+          <Card>
+            <T small dim>
+              {t("privateLinkHint")}
+            </T>
+            <Button
+              title={t("copyLink")}
+              kind="secondary"
+              onPress={async () => {
+                await Clipboard.setStringAsync(`${prefs.serverUrl}/#token=${encodeURIComponent(prefs.apiToken)}`);
+                Alert.alert(t("copied"));
+              }}
+            />
+          </Card>
+        </>
+      ) : null}
+
       <H>{t("language")}</H>
       <Row>
         <Chip label="English" active={lang === "en"} onPress={() => void setLang("en")} />
@@ -214,6 +236,13 @@ export default function SettingsScreen() {
             ))}
             <Button title={t("save")} loading={saving} onPress={saveRisk} />
           </Card>
+        </>
+      ) : null}
+
+      {hasServer && conn === "ok" ? (
+        <>
+          <H>🔑 {t("serverKeys")}</H>
+          <ServerKeysCard />
         </>
       ) : null}
 

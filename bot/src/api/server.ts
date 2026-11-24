@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { cors } from "hono/cors";
 import { z } from "zod";
 import { config } from "../config.js";
@@ -31,6 +34,8 @@ import { training, trainModel, trainerAvailable } from "../ml/trainer.js";
 import { getModel } from "../ml/model.js";
 import { listArchives, loadArchive, toGrid } from "../ml/candles.js";
 import { analyzeChart } from "../ml/brain.js";
+import { canSelfRestart, describeKeys, EDITABLE_KEYS, updateEnvFile } from "../util/envfile.js";
+import { log } from "../util/log.js";
 
 class UserError extends Error {}
 
@@ -555,5 +560,44 @@ app.post("/api/onramp/url", async (c) => {
     throw new UserError((e as Error).message);
   }
 });
+
+// ------------------------------------------------------------------ server keys (enter API keys from the app)
+
+app.get("/api/keys", (c) => c.json({ keys: describeKeys(), canRestart: canSelfRestart() }));
+
+app.put("/api/keys", async (c) => {
+  const body = z.record(z.string(), z.string().max(600)).parse(await c.req.json());
+  const patch: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (!(k in EDITABLE_KEYS)) throw new UserError(`${k} can't be changed from the app`);
+    patch[k] = v.trim();
+  }
+  if (!Object.keys(patch).length) throw new UserError("Nothing to save.");
+  updateEnvFile(patch);
+  addEvent("info", L(state.settings.language, `Server keys updated: ${Object.keys(patch).join(", ")}`, `Server-Schlüssel aktualisiert: ${Object.keys(patch).join(", ")}`));
+  const restarting = canSelfRestart();
+  if (restarting) {
+    // The service manager (systemd) starts the bot again with the new keys.
+    setTimeout(() => {
+      log.info("Restarting to apply new keys");
+      bot.shutdown();
+      process.exit(0);
+    }, 500);
+  }
+  return c.json({ ok: true, restarting });
+});
+
+// ------------------------------------------------------------------ web version of the app
+
+if (fs.existsSync(path.join(config.webDir, "index.html"))) {
+  const root = path.relative(process.cwd(), config.webDir) || ".";
+  app.use("/*", serveStatic({ root }));
+  // Single-page app: unknown paths (e.g. /bot, /token/…) load the app, which routes itself.
+  app.get("*", (c) => {
+    if (c.req.path.startsWith("/api/")) return c.json({ error: "Not found" }, 404);
+    return c.html(fs.readFileSync(path.join(config.webDir, "index.html"), "utf8"));
+  });
+  log.info(`Serving the web app from ${config.webDir}`);
+}
 
 export { app };

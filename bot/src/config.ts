@@ -49,6 +49,8 @@ export const config = {
   dataDir,
   apiToken: loadApiToken(),
   rpcUrl: env("RPC_URL") ?? "https://api.mainnet-beta.solana.com",
+  /** Built web version of the app (served at "/" so it can be used from any phone browser). */
+  webDir: path.resolve(env("WEB_DIR") ?? "../app/dist"),
   /** Your own Phantom address. Withdrawals from the bot wallet can only go here. */
   ownerWallet: env("OWNER_WALLET"),
   botWalletSecret: env("BOT_WALLET_SECRET"),

@@ -315,6 +315,8 @@ export function createApi(serverUrl: string, token: string) {
         wallets: { bot: string; owner: string | null; ownerLockedByServer: boolean };
       }>("GET", "/api/settings"),
     saveSettings: (patch: Partial<BotSettings>) => req<{ settings: BotSettings }>("PUT", "/api/settings", patch),
+    getKeys: () => req<{ keys: Record<string, { set: boolean; value?: string }>; canRestart: boolean }>("GET", "/api/keys"),
+    saveKeys: (patch: Record<string, string>) => req<{ ok: boolean; restarting: boolean }>("PUT", "/api/keys", patch),
     registerOwner: (wallet: string) => req<{ owner: string }>("POST", "/api/owner", { wallet }),
     trending: () => req<{ coins: Candidate[]; botPicks: Candidate[] }>("GET", "/api/market/trending", undefined, 60_000),
     search: (q: string) => req<{ coins: Candidate[] }>("GET", `/api/market/search?q=${encodeURIComponent(q)}`),

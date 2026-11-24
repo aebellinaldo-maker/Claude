@@ -74,6 +74,11 @@ export function onWalletChange(fn: (address: string | null) => void): () => void
   return () => listeners.delete(fn);
 }
 
+/** Only meaningful on the web build (see phantom.web.ts). */
+export function hasInjectedWallet(): boolean {
+  return false;
+}
+
 export async function getWalletAddress(): Promise<string | null> {
   return (await load()).walletAddress ?? null;
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, View } from "react-native";
+import { View } from "react-native";
+import { Alert } from "../lib/alert";
 import { useApp } from "../lib/app-context";
 import { useLoader } from "../lib/use-loader";
 import type { MlStats } from "../lib/api";

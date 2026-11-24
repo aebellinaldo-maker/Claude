@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Pressable, View, useWindowDimensions } from "react-native";
+import { Pressable, View, useWindowDimensions } from "react-native";
+import { Alert } from "../../lib/alert";
 import { router } from "expo-router";
 import { useApp } from "../../lib/app-context";
 import { useLoader } from "../../lib/use-loader";

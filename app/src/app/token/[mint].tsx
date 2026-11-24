@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Linking, View } from "react-native";
+import { Linking, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Stack, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../../lib/app-context";

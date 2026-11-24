@@ -4,9 +4,14 @@
 #
 #   cd Claude/bot && bash deploy/setup-ubuntu.sh
 #
-# What it does: installs Node.js and Caddy, builds the bot, runs it as a
-# service that starts on boot and restarts after crashes, and puts HTTPS in
-# front of it on a free sslip.io address (or DOMAIN=your.domain if you set it).
+# What it does: installs Node.js, Python and Caddy, builds the bot and the web
+# version of the app, runs the bot as a service that starts on boot and restarts
+# after crashes, and puts HTTPS in front of it on a free sslip.io address (or
+# DOMAIN=your.domain if you set it).
+#
+# Optional environment variables (used by deploy/oracle-cloud-init.sh):
+#   API_TOKEN=...          your own password for the app (otherwise one is generated)
+#   ANTHROPIC_API_KEY=...  and other keys from .env.example — written into .env
 set -euo pipefail
 
 BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +31,9 @@ cd "$BOT_DIR"
 npm ci
 npm run build
 
+echo "==> Building the app's web version (served by the bot, opens in any phone browser)"
+(cd "$BOT_DIR/../app" && npm ci && CI=1 npx expo export --platform web --output-dir dist)
+
 echo "==> Installing the machine-learning tools for the own model (LightGBM)"
 python3 -m venv ml/.venv
 ml/.venv/bin/pip install --quiet --upgrade pip
@@ -37,6 +45,15 @@ if [ ! -f .env ]; then
   sed -i "s/^HOST=.*/HOST=127.0.0.1/" .env
   chmod 600 .env
 fi
+# Values passed in the environment (e.g. from the cloud-init script) go into .env.
+for name in API_TOKEN ANTHROPIC_API_KEY OPENROUTER_API_KEY OPENROUTER_MODELS XAI_API_KEY XAI_MODELS OLLAMA_MODELS RPC_URL OWNER_WALLET MOONPAY_PUBLISHABLE_KEY MOONPAY_SECRET_KEY; do
+  value="${!name:-}"
+  if [ -n "$value" ]; then
+    grep -v "^$name=" .env > .env.tmp || true
+    printf '%s="%s"\n' "$name" "$value" >> .env.tmp
+    mv .env.tmp .env && chmod 600 .env
+  fi
+done
 
 PUBLIC_IP="$(curl -fsS https://api.ipify.org || true)"
 DOMAIN="${DOMAIN:-${PUBLIC_IP//./-}.sslip.io}"
@@ -78,16 +95,18 @@ if command -v iptables >/dev/null; then
 fi
 
 sleep 4
-TOKEN="$(cat "$BOT_DIR/data/api-token.txt" 2>/dev/null || grep '^API_TOKEN=' .env | cut -d= -f2-)"
+TOKEN="$(grep '^API_TOKEN=' .env | cut -d= -f2- | tr -d '"')"
+[ -z "$TOKEN" ] && TOKEN="$(cat "$BOT_DIR/data/api-token.txt" 2>/dev/null)"
 WALLET="$(sudo journalctl -u crypto-bot -n 100 --no-pager | grep -oE 'Bot wallet: +[1-9A-HJ-NP-Za-km-z]+' | tail -1 | awk '{print $3}')"
 
 cat <<EOF
 
 ──────────────────────────────────────────────────────────────
- Done! Enter these in the app (Settings → Bot server):
+ Done! Open this private link inside the Phantom app's browser (🌐):
 
-   Server URL:  https://$DOMAIN
-   API token:   $TOKEN
+   https://$DOMAIN/#token=$TOKEN
+
+ (Or in the native app: Settings → Server URL https://$DOMAIN, API token $TOKEN)
 
  Bot wallet:    $WALLET
  Back it up:    $BOT_DIR/data/bot-wallet.json  (copy it somewhere safe)

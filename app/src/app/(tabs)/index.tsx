@@ -1,4 +1,5 @@
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { useApp } from "../../lib/app-context";

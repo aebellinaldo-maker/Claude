@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Linking, Pressable } from "react-native";
+import { Linking, Pressable } from "react-native";
+import { Alert } from "../lib/alert";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useApp } from "../lib/app-context";

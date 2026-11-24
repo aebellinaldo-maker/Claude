@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Image, View } from "react-native";
+import { Image, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";

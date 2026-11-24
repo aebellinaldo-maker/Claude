@@ -34,7 +34,24 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 
 ---
 
-## Setup (about 1 hour, mostly clicking)
+## 📱 Setup with only a phone (no computer)
+
+Your bot server also hosts the app. You open it inside **Phantom's built-in browser** (so your wallet works) — no App Store, no computer, no Apple fee.
+
+1. **Create a free Oracle Cloud account** in Safari: <https://www.oracle.com/cloud/free/> (they verify a card; Always Free costs nothing). Tip: if a page is hard to use, tap **aA → Request Desktop Website**.
+2. **Copy the setup script:** open [oracle-cloud-init.sh](https://raw.githubusercontent.com/aebellinaldo-maker/Claude/claude/crypto-trading-app-bot-lat9g9/bot/deploy/oracle-cloud-init.sh) in Safari, select all and copy.
+3. **Create the server:** Compute → Instances → *Create instance*
+   - Image: **Ubuntu 24.04** · Shape: **VM.Standard.A1.Flex**, 4 OCPU / 24 GB (all free)
+   - *Show advanced options* → **Management** → *Paste cloud-init script* → paste, then **change `API_TOKEN`** to your own password (16+ letters/numbers, keep it secret) → *Create*.
+4. **Open the web ports:** on the instance page tap the **subnet** → **Security List** → *Add Ingress Rules*: source `0.0.0.0/0`, TCP, destination port **80**; add a second rule for port **443**.
+5. **Wait ~15 minutes** while it installs itself. Note the **Public IP** on the instance page, e.g. `140.238.12.34`.
+6. **Open your app:** in the **Phantom** app tap the 🌐 browser tab and open
+   `https://140-238-12-34.sslip.io/#token=YOUR_PASSWORD` (your IP with dashes instead of dots). Add it to Phantom's favourites.
+7. In the app: **Connect Phantom**, then **Settings → Server keys** to add your Anthropic (Claude) key or a free OpenRouter key, and **Bot → Start bot** in paper mode.
+
+If the page doesn't load after 20 minutes, check step 4 (both ports). The install log is in `/var/log/crypto-pilot-setup.log` on the server (Oracle's *Cloud Shell* can open it).
+
+## Setup with a computer (about 1 hour, mostly clicking)
 
 ### Step 1 — Free 24/7 server (Oracle Cloud "Always Free")
 
@@ -78,7 +95,7 @@ You need a computer (Mac/Windows/Linux) with [Node.js](https://nodejs.org) once.
    ```
 3. Scan the QR code with the iPhone camera → it opens in Expo Go.
 
-Expo Go loads the app from your computer, so keep `npx expo start` running while you use it. For a real standalone app that works without your computer, you need an Apple Developer account ($99/year): run `npx eas-cli build --platform ios --profile production` and then `npx eas-cli submit --platform ios`, and install it from **TestFlight**. Change `ios.bundleIdentifier` in `app/app.json` to your own first, e.g. `com.yourname.cryptopilot`.
+Expo Go loads the app from your computer, so keep `npx expo start` running while you use it. (No computer? Use the [phone-only setup](#-setup-with-only-a-phone-no-computer) — the bot server hosts the app.) For a real standalone app that works without your computer, you need an Apple Developer account ($99/year): run `npx eas-cli build --platform ios --profile production` and then `npx eas-cli submit --platform ios`, and install it from **TestFlight**. Change `ios.bundleIdentifier` in `app/app.json` to your own first, e.g. `com.yourname.cryptopilot`.
 
 ### Step 4 — First run
 
