@@ -65,7 +65,16 @@ async function poolsToCollect(topPages = 5): Promise<{ pool: string; mint: strin
   ];
   for (const url of urls) {
     try {
-      const r = await fetchJson<{ data?: GeckoPool[] }>(url, { retries: 2 });
+      let r: { data?: GeckoPool[] } | null = null;
+      // The free API allows ~30 calls/minute: wait out "too many requests" instead of skipping the page.
+      for (let attempt = 0; attempt < 4 && !r; attempt++) {
+        try {
+          r = await fetchJson<{ data?: GeckoPool[] }>(url, { retries: 0 });
+        } catch (e) {
+          if (attempt === 3 || !/HTTP 429/.test(errMsg(e))) throw e;
+          await new Promise((res) => setTimeout(res, 20_000 * (attempt + 1)));
+        }
+      }
       for (const p of r?.data ?? []) {
         const base = p.relationships.base_token.data.id.replace(/^solana_/, "");
         const quote = p.relationships.quote_token.data.id.replace(/^solana_/, "");
