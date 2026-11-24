@@ -3,6 +3,7 @@ import { Platform, Switch, View } from "react-native";
 import { Alert } from "../../lib/alert";
 import * as Clipboard from "expo-clipboard";
 import { ServerKeysCard } from "../../components/server-keys-card";
+import { WalletBackupCard } from "../../components/wallet-backup-card";
 import { useApp } from "../../lib/app-context";
 import type { BotSettings } from "../../lib/api";
 import type { TKey } from "../../lib/i18n";
@@ -241,6 +242,7 @@ export default function SettingsScreen() {
 
       {hasServer && conn === "ok" ? (
         <>
+          <WalletBackupCard />
           <H>🔑 {t("serverKeys")}</H>
           <ServerKeysCard />
         </>

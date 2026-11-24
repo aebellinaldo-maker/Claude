@@ -54,6 +54,12 @@ export const config = {
   /** Your own Phantom address. Withdrawals from the bot wallet can only go here. */
   ownerWallet: env("OWNER_WALLET"),
   botWalletSecret: env("BOT_WALLET_SECRET"),
+  /**
+   * Hosts like Hugging Face Spaces (which set SPACE_ID) wipe local files on restart.
+   * There, the bot wallet must come from the BOT_WALLET_SECRET secret before it may hold money,
+   * and API keys must be set as host secrets instead of in .env.
+   */
+  ephemeral: !!env("SPACE_ID") || env("EPHEMERAL_STORAGE") === "1",
   anthropicApiKey: env("ANTHROPIC_API_KEY"),
   jupiter: {
     apiKey: jupiterKey,

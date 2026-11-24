@@ -74,6 +74,15 @@ const en = {
     "To use your wallet, open this app inside Phantom. Your private link was copied: open the Phantom app, tap the 🌐 browser tab, paste the link and open it. Tip: add it to Phantom's favourites.",
   privateLink: "Your private app link",
   serverKeys: "Server keys",
+  keysHostSecrets:
+    "This server runs on Hugging Face, which wipes files on restart. Add keys as secrets instead: your Space → Settings → Variables and secrets → New secret, using these names. ✓ = already set.",
+  backupTitle: "Bot wallet backup",
+  backupIntro:
+    "This server forgets its files when it restarts. Before the bot may hold money, save its wallet key as a secret: tap below, then in your Space go to Settings → Variables and secrets → New secret, name BOT_WALLET_SECRET, paste the key. The Space restarts and this warning disappears.",
+  backupReveal: "Show & copy wallet key",
+  backupRevealTitle: "Show the wallet key?",
+  backupRevealWarn: "Anyone with this key controls the bot wallet. Only paste it into your Space's secrets, never anywhere else.",
+  backupCopied: "Copied. Paste it as the secret BOT_WALLET_SECRET in your Space settings now.",
   keysIntro: "API keys for the AI brains, a faster Solana connection and card payments. Saved on your bot server only; secret keys are never shown again.",
   key_anthropic: "Anthropic (Claude) API key",
   key_openrouter: "OpenRouter API key",
@@ -400,6 +409,15 @@ const de: Record<TKey, string> = {
     "Um dein Wallet zu nutzen, öffne diese App in Phantom. Dein privater Link wurde kopiert: Öffne die Phantom-App, tippe auf den 🌐 Browser-Tab, füge den Link ein und öffne ihn. Tipp: Speichere ihn in Phantoms Favoriten.",
   privateLink: "Dein privater App-Link",
   serverKeys: "Server-Schlüssel",
+  keysHostSecrets:
+    "Dieser Server läuft auf Hugging Face und löscht Dateien beim Neustart. Trage Schlüssel stattdessen als Secrets ein: dein Space → Settings → Variables and secrets → New secret, mit diesen Namen. ✓ = schon gesetzt.",
+  backupTitle: "Bot-Wallet sichern",
+  backupIntro:
+    "Dieser Server vergisst beim Neustart seine Dateien. Bevor der Bot Geld halten darf, speichere den Wallet-Schlüssel als Secret: unten tippen, dann im Space Settings → Variables and secrets → New secret, Name BOT_WALLET_SECRET, Schlüssel einfügen. Der Space startet neu und diese Warnung verschwindet.",
+  backupReveal: "Wallet-Schlüssel zeigen & kopieren",
+  backupRevealTitle: "Wallet-Schlüssel anzeigen?",
+  backupRevealWarn: "Wer diesen Schlüssel hat, kontrolliert das Bot-Wallet. Füge ihn nur in die Secrets deines Space ein, nirgendwo sonst.",
+  backupCopied: "Kopiert. Füge ihn jetzt als Secret BOT_WALLET_SECRET in deinen Space-Einstellungen ein.",
   keysIntro: "API-Schlüssel für die KI-Gehirne, eine schnellere Solana-Verbindung und Kartenzahlungen. Nur auf deinem Bot-Server gespeichert; geheime Schlüssel werden nie wieder angezeigt.",
   key_anthropic: "Anthropic (Claude) API-Schlüssel",
   key_openrouter: "OpenRouter API-Schlüssel",

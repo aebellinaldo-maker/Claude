@@ -20,6 +20,8 @@ import { scoreCandidate } from "../risk/scoring.js";
 import {
   botKeypair,
   botTransferSol,
+  botWalletSecretBase58,
+  walletBackupNeeded,
   buildTransferTx,
   getSolBalance,
   getTokenHoldings,
@@ -151,6 +153,9 @@ app.post("/api/bot/panic", async (c) => {
 
 app.post("/api/bot/mode", async (c) => {
   const { mode } = z.object({ mode: z.enum(["paper", "real"]) }).parse(await c.req.json());
+  if (mode === "real" && walletBackupNeeded()) {
+    throw new UserError("First save the bot wallet key as the BOT_WALLET_SECRET secret (Settings → Bot wallet backup), or a restart would lose the money.");
+  }
   try {
     await bot.setMode(mode);
   } catch (e) {
@@ -527,6 +532,9 @@ async function summarizeQuote(q: Awaited<ReturnType<typeof getQuote>>) {
 /** Unsigned transfer from your Phantom wallet to the bot wallet (you sign it in Phantom). */
 app.post("/api/transfer/fund-bot", async (c) => {
   const { from, sol } = z.object({ from: addr, sol: z.number().positive().max(1000) }).parse(await c.req.json());
+  if (walletBackupNeeded()) {
+    throw new UserError("First save the bot wallet key as the BOT_WALLET_SECRET secret (Settings → Bot wallet backup), or a restart would lose the money.");
+  }
   const transaction = await buildTransferTx(from, botKeypair.publicKey.toBase58(), Math.floor(sol * 1e9));
   return c.json({ transaction, to: botKeypair.publicKey.toBase58() });
 });
@@ -563,7 +571,16 @@ app.post("/api/onramp/url", async (c) => {
 
 // ------------------------------------------------------------------ server keys (enter API keys from the app)
 
-app.get("/api/keys", (c) => c.json({ keys: describeKeys(), canRestart: canSelfRestart() }));
+app.get("/api/keys", (c) => c.json({ keys: describeKeys(), canRestart: canSelfRestart(), hostSecrets: config.ephemeral }));
+
+/** Wallet backup on hosts that wipe files: shows the generated key once so it can be saved as a secret. */
+app.get("/api/wallet-backup", (c) =>
+  c.json({ needed: walletBackupNeeded(), ephemeral: config.ephemeral, address: botKeypair.publicKey.toBase58() }),
+);
+app.post("/api/wallet-backup/reveal", (c) => {
+  if (!walletBackupNeeded()) throw new UserError("The bot wallet is already saved as a secret.");
+  return c.json({ name: "BOT_WALLET_SECRET", value: botWalletSecretBase58() });
+});
 
 app.put("/api/keys", async (c) => {
   const body = z.record(z.string(), z.string().max(600)).parse(await c.req.json());
@@ -573,6 +590,7 @@ app.put("/api/keys", async (c) => {
     patch[k] = v.trim();
   }
   if (!Object.keys(patch).length) throw new UserError("Nothing to save.");
+  if (config.ephemeral) throw new UserError("On this host, add keys as secrets in the host's settings (e.g. Hugging Face → Settings → Variables and secrets).");
   updateEnvFile(patch);
   addEvent("info", L(state.settings.language, `Server keys updated: ${Object.keys(patch).join(", ")}`, `Server-Schlüssel aktualisiert: ${Object.keys(patch).join(", ")}`));
   const restarting = canSelfRestart();

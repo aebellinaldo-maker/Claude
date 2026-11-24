@@ -37,6 +37,16 @@ export function loadBotKeypair(): Keypair {
 
 export const botKeypair = loadBotKeypair();
 
+/** True when the bot wallet would be lost on restart (ephemeral host without BOT_WALLET_SECRET). */
+export function walletBackupNeeded(): boolean {
+  return config.ephemeral && !config.botWalletSecret;
+}
+
+/** The bot wallet's secret key (base58), for saving it as a host secret. */
+export function botWalletSecretBase58(): string {
+  return bs58.encode(botKeypair.secretKey);
+}
+
 export function isValidAddress(addr: string): boolean {
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return false;
   try {

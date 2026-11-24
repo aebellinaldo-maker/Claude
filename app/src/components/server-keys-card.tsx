@@ -23,6 +23,7 @@ export function ServerKeysCard() {
   const { t, api } = useApp();
   const [keys, setKeys] = useState<Record<string, { set: boolean; value?: string }> | null>(null);
   const [canRestart, setCanRestart] = useState(false);
+  const [hostSecrets, setHostSecrets] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export function ServerKeysCard() {
       const r = await api.getKeys();
       setKeys(r.keys);
       setCanRestart(r.canRestart);
+      setHostSecrets(r.hostSecrets);
       setDraft(Object.fromEntries(FIELDS.filter((f) => !f.secret).map((f) => [f.name, r.keys[f.name]?.value ?? ""])));
     } catch {
       setKeys(null);
@@ -44,6 +46,20 @@ export function ServerKeysCard() {
   }, [api]);
 
   if (!keys) return null;
+  if (hostSecrets) {
+    return (
+      <Card>
+        <T small dim>
+          {t("keysHostSecrets")}
+        </T>
+        {FIELDS.map((f) => (
+          <T key={f.name} small color={keys[f.name]?.set ? colors.green : colors.textFaint}>
+            {keys[f.name]?.set ? "✓" : "○"} {f.name}
+          </T>
+        ))}
+      </Card>
+    );
+  }
 
   const save = async () => {
     const patch: Record<string, string> = {};
