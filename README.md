@@ -34,6 +34,17 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 
 ---
 
+## 🤗 Free setup without a credit card (Hugging Face)
+
+1. Sign up at <https://huggingface.co/join> (email only).
+2. **New Space** (<https://huggingface.co/new-space>): name `crypto-pilot`, SDK **Docker** → *Blank*, hardware **CPU basic (free)**, **Public** → *Create Space*.
+3. In the Space: **Settings → Variables and secrets → New secret**: name `API_TOKEN`, value = your own password (16+ letters/numbers). Optional secrets: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` + `OPENROUTER_MODELS`, `RPC_URL`.
+4. **Files → + Add file → Create a new file**, name `Dockerfile`, paste [this content](https://raw.githubusercontent.com/aebellinaldo-maker/Claude/claude/crypto-trading-app-bot-lat9g9/bot/deploy/huggingface/Dockerfile) → *Commit*. Building takes ~10–15 min.
+5. Open `https://YOUR-HF-NAME-crypto-pilot.hf.space/#token=YOUR_PASSWORD` in **Phantom's browser** (🌐).
+6. **Settings → Bot wallet backup** → copy the key → add it as the secret `BOT_WALLET_SECRET`. Until then the bot refuses real money (Hugging Face wipes files on restart).
+
+Limits of the free tier: the Space sleeps after ~48 h without visits (open the app every day or two), and trade history / chart archive reset when it restarts. Your bot wallet is safe once `BOT_WALLET_SECRET` is saved.
+
 ## 📱 Setup with only a phone (no computer)
 
 Your bot server also hosts the app. You open it inside **Phantom's built-in browser** (so your wallet works) — no App Store, no computer, no Apple fee.
