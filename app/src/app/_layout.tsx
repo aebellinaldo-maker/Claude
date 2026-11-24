@@ -24,6 +24,7 @@ function RootStack() {
       <Stack.Screen name="token/[mint]" options={{ title: "" }} />
       <Stack.Screen name="buy" options={{ title: t("buyTitle"), presentation: "modal" }} />
       <Stack.Screen name="fund-bot" options={{ title: t("fundTitle"), presentation: "modal" }} />
+      <Stack.Screen name="cash-out" options={{ title: t("cashOut"), presentation: "modal" }} />
       <Stack.Screen name="trades" options={{ title: t("tradeHistory") }} />
       <Stack.Screen name="phantom/[action]" options={{ headerShown: false, presentation: "transparentModal", animation: "none" }} />
     </Stack>

@@ -544,6 +544,14 @@ app.post("/api/transfer/fund-bot", async (c) => {
   return c.json({ transaction, to: botKeypair.publicKey.toBase58() });
 });
 
+/** Unsigned SOL transfer from your Phantom wallet to any address (e.g. your Coinbase deposit address). You sign it in Phantom. */
+app.post("/api/transfer/build", async (c) => {
+  const { from, to, sol } = z.object({ from: addr, to: addr, sol: z.number().positive().max(100_000) }).parse(await c.req.json());
+  if (from === to) throw new UserError("From and to are the same address.");
+  const transaction = await buildTransferTx(from, to, Math.floor(sol * 1e9));
+  return c.json({ transaction });
+});
+
 /** Broadcasts a transaction you signed in Phantom (used when Phantom returns a signed tx instead of sending it). */
 app.post("/api/tx/send", async (c) => {
   const { transaction } = z.object({ transaction: z.string().min(50) }).parse(await c.req.json());

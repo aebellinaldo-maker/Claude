@@ -70,6 +70,7 @@ export default function WalletScreen() {
               <Button title={t("buyCrypto")} onPress={() => router.push("/buy")} style={{ flex: 1 }} />
               <Button title={t("fundBot")} kind="secondary" onPress={() => router.push("/fund-bot")} style={{ flex: 1 }} />
             </Row>
+            <Button title={`💸 ${t("cashOut")}`} kind="secondary" onPress={() => router.push("/cash-out")} />
           </Card>
 
           {error ? <Note kind="error">{error}</Note> : null}

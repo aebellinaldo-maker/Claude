@@ -345,6 +345,7 @@ export function createApi(serverUrl: string, token: string) {
         amount,
         slippageBps,
       }),
+    buildTransfer: (from: string, to: string, sol: number) => req<{ transaction: string }>("POST", "/api/transfer/build", { from, to, sol }),
     buildFundBot: (from: string, sol: number) => req<{ transaction: string; to: string }>("POST", "/api/transfer/fund-bot", { from, sol }),
     sendSigned: (transaction: string) => req<{ signature: string }>("POST", "/api/tx/send", { transaction }, 120_000),
     onrampProviders: () => req<{ providers: OnrampProvider[] }>("GET", "/api/onramp/providers"),
