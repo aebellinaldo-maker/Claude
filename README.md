@@ -201,6 +201,8 @@ How it works:
 
 **First result (honest):** trained here on 32 coins / 26 days, the model *looked* great at first (picks winning 40 %, +5.8 % per trade) — until the checks above exposed survivorship bias through "coin age". Corrected and tested on unseen coins it was **not distinguishable from luck** (+0.4 % per trade, t = 0.08), so the bot does not trade on it yet. What *was* statistically clear: buying trending meme coins at random loses about 1.4 % per trade (t = −2.6) — which is why the filters and stop-losses matter more than any prediction. On your server it keeps collecting charts and retests itself every week.
 
+**Bigger test (79 coins, ~30 days, 22,000+ chart moments, 18 take-profit/stop-loss/hold strategies, `npm run ml:optimize`):** buying every trending meme coin lost 1.2–3.5 % per trade after fees in *every* strategy. The own model lost less than random in most of them (e.g. −0.3 % vs −1.5 % per trade) but none was profitable on unseen coins and days. The model shipped with the bot (`bot/ml/pretrained-model.json`) is therefore marked "not proven": its estimates are shown in the app and given to the AI brains as a second opinion, but the bot does not trade on it alone.
+
 Be realistic: a model like this finds small statistical edges at best. Meme coins are driven by hype that charts don't show, and patterns that worked last month can stop working. That's why it's tested on unseen data every week and the safety rules always apply. Train it from the command line with `npm run ml:train` (in `bot/`).
 
 ## Project layout
