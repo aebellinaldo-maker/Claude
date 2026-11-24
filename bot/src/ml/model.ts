@@ -26,6 +26,8 @@ export interface Stats {
   trades: number;
   winRate: number | null;
   avgReturnPct: number | null;
+  /** Average return divided by its standard error (≥ 1 ≈ 84% confidence the edge isn't luck). */
+  tStat?: number | null;
 }
 
 export interface PilotModel {
@@ -37,13 +39,20 @@ export interface PilotModel {
   rounds: number;
   data: { samples: number; coins: number; days: number; baseWinRate: number };
   metrics: {
+    /** Test = later days AND coins the model never saw in training. */
     testDays: number;
+    testCoins: number;
     testAuc: number;
     model: Stats;
     top10pct: Stats;
     buyEverything: Stats;
     momentumRule: Stats;
+    /** Beat both baselines on unseen coins and days. Enough for paper trading. */
     useful: boolean;
+    /** Check on charts recorded after the bot started watching (no survivorship bias). */
+    forward: { available: boolean; samples: number; days: number; model: Stats; buyEverything: Stats; validated: boolean };
+    /** useful AND validated on forward data: required before trading real money. */
+    tradeReady: boolean;
   };
   importance: { feature: string; gain: number }[];
   trees: TreeNode[];

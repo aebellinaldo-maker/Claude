@@ -29,8 +29,9 @@ export const FEATURE_NAMES = [
   "max_jump_4h",
   "vwap_dev_24h",
   "zero_vol_frac_24h",
-  "age_hours",
 ] as const;
+// Note: coin age is deliberately NOT a feature. Charts back-filled from coins that are popular
+// today make "young coin" look like a winning signal (survivorship bias); see ml/train.py.
 
 export type FeatureName = (typeof FEATURE_NAMES)[number];
 
@@ -73,7 +74,7 @@ const sum = (a: number[]) => a.reduce((s, x) => s + x, 0);
  * Features for the candle at index `i` of a gap-filled grid (see toGrid), using only
  * candles up to and including `i` (no peeking into the future).
  */
-export function featuresAt(grid: Candle[], i: number, createdAtMs?: number): number[] | null {
+export function featuresAt(grid: Candle[], i: number): number[] | null {
   if (i < LOOKBACK - 1 || i >= grid.length) return null;
   const w = grid.slice(i - LOOKBACK + 1, i + 1);
   const closes = w.map((c) => c[C]);
@@ -108,8 +109,6 @@ export function featuresAt(grid: Candle[], i: number, createdAtMs?: number): num
   const pv = sum(w.map((x) => ((x[H] + x[L] + x[C]) / 3) * x[V]));
   const vwap = vol24 > 0 ? pv / vol24 : c;
 
-  const ageHours = createdAtMs ? (w[w.length - 1][0] * 1000 - createdAtMs) / 3_600_000 : NaN;
-
   const f: Record<FeatureName, number> = {
     ret_15m: c / back(1) - 1,
     ret_1h: c / back(4) - 1,
@@ -131,7 +130,6 @@ export function featuresAt(grid: Candle[], i: number, createdAtMs?: number): num
     max_jump_4h: maxJump,
     vwap_dev_24h: c / vwap - 1,
     zero_vol_frac_24h: vols.filter((v) => v === 0).length / vols.length,
-    age_hours: Number.isFinite(ageHours) && ageHours >= 0 ? Math.min(ageHours, 24 * 365) : NaN,
   };
   return FEATURE_NAMES.map((n) => f[n]);
 }

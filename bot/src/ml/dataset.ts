@@ -48,12 +48,16 @@ export async function buildDataset(opts: DatasetOptions): Promise<DatasetSummary
     const grid = toGrid(a.candles);
     let used = false;
     for (let i = LOOKBACK - 1; i + opts.horizonBars < grid.length; i += opts.every) {
-      const x = featuresAt(grid, i, a.createdAt);
+      const x = featuresAt(grid, i);
       if (!x || x[volIdx] < minLogVol || x[zeroIdx] > 0.5) continue;
       const o = outcomeAt(grid, i, opts.tpPct, opts.slPct, opts.horizonBars);
       if (!o) continue;
       const ts = grid[i][0];
-      lines.push(JSON.stringify({ t: ts, c: a.mint, x: x.map((v) => (Number.isFinite(v) ? Math.round(v * 1e6) / 1e6 : null)), y: o.win, r: Math.round(o.ret * 1e5) / 1e5 }));
+      // f = 1: recorded after the bot started watching the coin (forward data, no survivorship bias).
+      const forward = a.firstSeenAt !== undefined && ts * 1000 >= a.firstSeenAt ? 1 : 0;
+      lines.push(
+        JSON.stringify({ t: ts, c: a.mint, f: forward, x: x.map((v) => (Number.isFinite(v) ? Math.round(v * 1e6) / 1e6 : null)), y: o.win, r: Math.round(o.ret * 1e5) / 1e5 }),
+      );
       samples++;
       wins += o.win;
       firstTs = Math.min(firstTs, ts);

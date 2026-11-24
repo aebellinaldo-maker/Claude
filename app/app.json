@@ -30,7 +30,14 @@
       "expo-router",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Crypto Pilot needs your photos so you can choose a chart screenshot for the AI to analyse.",
+          "cameraPermission": "Crypto Pilot uses the camera so you can photograph a chart for the AI to analyse."
+        }
+      ]
     ],
     "scheme": "cryptopilot",
     "extra": {

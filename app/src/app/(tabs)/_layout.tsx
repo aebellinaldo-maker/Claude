@@ -14,6 +14,10 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>{t("tabMarket")}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="chart.line.uptrend.xyaxis" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="chart">
+        <NativeTabs.Trigger.Label>{t("tabChart")}</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="camera.viewfinder" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="bot">
         <NativeTabs.Trigger.Label>{t("tabBot")}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: "cpu", selected: "cpu.fill" }} />

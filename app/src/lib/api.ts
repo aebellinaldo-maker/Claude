@@ -168,17 +168,37 @@ export interface Opinion {
   points: string[];
 }
 
+export interface ChartRead {
+  is_chart: boolean;
+  verdict: "buy" | "sell" | "hold" | "avoid";
+  confidence: number;
+  timeframe: string;
+  trend: "up" | "down" | "sideways" | "unclear";
+  wyckoff_phase: string;
+  patterns: { name: string; meaning: string }[];
+  support: string[];
+  resistance: string[];
+  volume_read: string;
+  momentum_read: string;
+  entry_idea: string;
+  stop_loss_idea: string;
+  take_profit_idea: string;
+  summary: string;
+  risks: string[];
+}
+
 export interface TokenChart {
   candles: { t: number; o: number; h: number; l: number; c: number; v: number }[];
   chart: Record<string, number | string> | null;
   mlProb: number | null;
-  model: { threshold: number; baseWinRate: number; tpPct: number; slPct: number; hours: number; useful: boolean } | null;
+  model: { threshold: number; baseWinRate: number; tpPct: number; slPct: number; hours: number; useful: boolean; tradeReady: boolean } | null;
 }
 
 export interface MlStats {
   trades: number;
   winRate: number | null;
   avgReturnPct: number | null;
+  tStat?: number | null;
 }
 
 export interface MlStatus {
@@ -187,7 +207,18 @@ export interface MlStatus {
     params: { tpPct: number; slPct: number; horizonBars: number; feePct: number };
     threshold: number;
     data: { samples: number; coins: number; days: number; baseWinRate: number };
-    metrics: { testDays: number; testAuc: number; model: MlStats; top10pct: MlStats; buyEverything: MlStats; momentumRule: MlStats; useful: boolean };
+    metrics: {
+      testDays: number;
+      testCoins: number;
+      testAuc: number;
+      model: MlStats;
+      top10pct: MlStats;
+      buyEverything: MlStats;
+      momentumRule: MlStats;
+      useful: boolean;
+      forward: { available: boolean; samples: number; days: number; model: MlStats; buyEverything: MlStats; validated: boolean };
+      tradeReady: boolean;
+    };
     importance: { feature: string; gain: number }[];
   } | null;
   training: {
@@ -288,6 +319,8 @@ export function createApi(serverUrl: string, token: string) {
     trending: () => req<{ coins: Candidate[]; botPicks: Candidate[] }>("GET", "/api/market/trending", undefined, 60_000),
     search: (q: string) => req<{ coins: Candidate[] }>("GET", `/api/market/search?q=${encodeURIComponent(q)}`),
     token: (mint: string) => req<{ coin: Candidate }>("GET", `/api/token/${mint}`),
+    analyzeChartImage: (image: string, mediaType: "image/jpeg" | "image/png", note?: string) =>
+      req<{ analysis: ChartRead; model: string }>("POST", "/api/chart/analyze", { image, mediaType, note }, 240_000),
     tokenChart: (mint: string) => req<TokenChart>("GET", `/api/token/${mint}/chart`, undefined, 90_000),
     mlStatus: () => req<MlStatus>("GET", "/api/ml/status"),
     mlTrain: (collect?: boolean) => req<{ started: boolean }>("POST", "/api/ml/train", { collect }),

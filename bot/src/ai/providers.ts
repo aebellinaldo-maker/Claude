@@ -8,6 +8,12 @@ import { config } from "../config.js";
 import type { ModelInfo } from "./models.js";
 import { costUsd } from "./models.js";
 
+export interface ImageInput {
+  /** Base64 data without the "data:" prefix. */
+  base64: string;
+  mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+}
+
 export interface StructuredResult<T> {
   data: T | null;
   usd: number;
@@ -82,7 +88,7 @@ function validate<T>(schema: z.ZodType<T>, text: string): { data: T | null; erro
 
 // ---------------------------------------------------------------- Ollama
 
-async function ollamaChat<T>(m: ModelInfo, system: string, user: string, schema: z.ZodType<T>): Promise<StructuredResult<T>> {
+async function ollamaChat<T>(m: ModelInfo, system: string, user: string, schema: z.ZodType<T>, image?: ImageInput): Promise<StructuredResult<T>> {
   const o = config.ollama;
   const res = await postJson(
     `${o.url.replace(/\/+$/, "")}/api/chat`,
@@ -95,7 +101,8 @@ async function ollamaChat<T>(m: ModelInfo, system: string, user: string, schema:
       options: { num_ctx: o.numCtx, temperature: 0.2 },
       messages: [
         { role: "system", content: system },
-        { role: "user", content: user },
+        // Vision models (e.g. Gemma 3, Qwen-VL, LLaVA) read images passed here.
+        { role: "user", content: user, ...(image ? { images: [image.base64] } : {}) },
       ],
     },
     o.apiKey ? { authorization: `Bearer ${o.apiKey}` } : {},
@@ -122,12 +129,21 @@ async function openAiCompatChat<T>(
   system: string,
   user: string,
   schema: z.ZodType<T>,
+  image?: ImageInput,
 ): Promise<StructuredResult<T>> {
   const p = OPENAI_COMPAT[m.provider];
   const headers = { authorization: `Bearer ${p.key() ?? ""}` };
   const messages = [
     { role: "system", content: system },
-    { role: "user", content: user },
+    {
+      role: "user",
+      content: image
+        ? [
+            { type: "text", text: user },
+            { type: "image_url", image_url: { url: `data:${image.mediaType};base64,${image.base64}` } },
+          ]
+        : user,
+    },
   ];
   const schemaJson = jsonSchemaFor(schema);
 
@@ -170,10 +186,16 @@ async function openAiCompatChat<T>(
   return { ...v, inTokens, outTokens, usd: costUsd(m, inTokens, outTokens) };
 }
 
-export async function structuredChat<T>(m: ModelInfo, system: string, user: string, schema: z.ZodType<T>): Promise<StructuredResult<T>> {
-  if (m.provider === "ollama") return ollamaChat(m, system, user, schema);
+export async function structuredChat<T>(
+  m: ModelInfo,
+  system: string,
+  user: string,
+  schema: z.ZodType<T>,
+  image?: ImageInput,
+): Promise<StructuredResult<T>> {
+  if (m.provider === "ollama") return ollamaChat(m, system, user, schema, image);
   if (m.provider === "openrouter" || m.provider === "xai") {
-    return openAiCompatChat(m as ModelInfo & { provider: "openrouter" | "xai" }, system, user, schema);
+    return openAiCompatChat(m as ModelInfo & { provider: "openrouter" | "xai" }, system, user, schema, image);
   }
   throw new Error(`structuredChat does not handle ${m.provider}`);
 }

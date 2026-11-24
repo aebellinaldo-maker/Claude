@@ -369,7 +369,11 @@ class Bot {
     // Own trained model as the brain: buy what it rates above its tested threshold.
     const brain = resolveModel(s);
     if (s.aiEnabled && brain?.provider === "ml") {
-      if (getModel()?.metrics.useful) {
+      const mm = getModel()?.metrics;
+      // Paper money: the model must beat the baselines on unseen coins and days.
+      // Real money: it must ALSO be confirmed on forward-recorded charts.
+      const allowed = state.mode === "real" ? mm?.tradeReady : mm?.useful;
+      if (allowed) {
         if (canBuy) {
           for (const pick of mlPicks(passed, freeSlots, s)) {
             if (!state.running || state.killSwitch.tripped) break;
@@ -382,10 +386,15 @@ class Bot {
         this.warnedUnproven = true;
         addEvent(
           "warn",
-          l(
-            "Own model hasn't proven better than simple rules yet — the rules decide until it does",
-            "Eigenes Modell ist noch nicht nachweislich besser als einfache Regeln — bis dahin entscheiden die Regeln",
-          ),
+          mm?.useful && state.mode === "real"
+            ? l(
+                "Own model passed the back-test but isn't confirmed on forward-recorded charts yet — with real money the rules decide until it is",
+                "Eigenes Modell hat den Backtest bestanden, ist aber auf vorwärts aufgezeichneten Charts noch nicht bestätigt — mit Echtgeld entscheiden bis dahin die Regeln",
+              )
+            : l(
+                "Own model hasn't proven better than simple rules yet — the rules decide until it does",
+                "Eigenes Modell ist noch nicht nachweislich besser als einfache Regeln — bis dahin entscheiden die Regeln",
+              ),
         );
       }
     }

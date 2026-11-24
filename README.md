@@ -4,7 +4,8 @@ A personal iPhone app + 24/7 trading bot for Solana and meme coins.
 
 - **Wallet** – connect your Phantom wallet, see your coins and their value in €.
 - **Buy** – buy SOL/USDC with **card, PayPal, Apple Pay or bank transfer** through a licensed payment partner (MoonPay / Transak). The coins go straight to *your* Phantom wallet.
-- **Market** – trending Solana coins, a safety check for every coin (RugCheck), an "Ask the AI" button, and swaps (SOL ⇄ meme coin) that you approve in Phantom.
+- **Market** – trending Solana coins, a safety check for every coin (RugCheck), a 24 h candlestick chart with technical analysis, an "Ask the AI" button, and swaps (SOL ⇄ meme coin) that you approve in Phantom.
+- **Chart AI** – send a screenshot or photo of any chart: the AI reads the candles, volume and indicators and answers **buy / sell / hold / avoid** with the patterns it sees, support/resistance, an entry–stop–target plan and the risks.
 - **Bot** – a trading bot that runs 24/7 on a free server with its own small wallet (e.g. €10). It finds trending coins, filters out scams, lets **Claude (AI)** pick trades using live market data and a daily web-research briefing, and protects the money with hard rules (stop-loss, take-profit, daily loss limit, kill switch). **Paper mode** tests it with fake money at real prices first.
 - English + German.
 
@@ -141,6 +142,22 @@ sudo systemctl restart crypto-bot
 
 Then choose it in the app → Settings → AI model. On a free 4-core CPU a ~9B model needs roughly 2–5 minutes per decision; that's fine because the bot decides at most every 20 minutes, and stop-losses keep running in parallel. There are community models on Ollama trained to imitate Claude Opus' reasoning (search "Opus distilled" on ollama.com) — they are small Qwen models, not the real Opus, so expect clearly weaker judgement.
 
+## Chart AI (send a chart picture)
+
+Open the **Chart AI** tab, pick a screenshot (or take a photo of a screen), optionally add the coin/timeframe, and tap *Analyse chart*. The AI works through the playbook below — timeframe → trend → support/resistance → volume → momentum → candles → patterns → Wyckoff phase → meme-coin red flags → risk management — and returns a verdict with confidence, the patterns it found, key levels, a trade plan (entry, stop-loss, target) and the risks.
+
+It needs an AI that can see images: any Claude model works; with Ollama/OpenRouter/Grok, choose a vision model (e.g. a Gemma 3, Qwen-VL or LLaVA model in Ollama). The app shrinks photos before sending. Cost with Claude Opus ≈ $0.03–0.08 per chart, with Haiku a fraction of a cent. It's an opinion based on probabilities — it can't see news, holders, or a team about to sell.
+
+## The AI's trading knowledge
+
+Every AI brain gets a **trading playbook** (`bot/src/ai/playbook.ts`) distilled from well-regarded technical-analysis teaching and research:
+
+- **CMT Association curriculum** — trend structure, support/resistance and role reversal, volume confirmation, momentum and divergences.
+- **Steve Nison's candlestick work** and **Thomas Bulkowski's pattern statistics** — which candles matter, and how reliable they really are (e.g. Three White Soldiers ≈ 82 % bullish reversal, Piercing ≈ 64 %, many patterns close to a coin flip — [thepatternsite.com](https://thepatternsite.com/ThreeWhiteSoldiers.html)).
+- **Wyckoff method** — accumulation, markup, distribution, markdown; springs and upthrusts (the shape of a pump-and-dump).
+- **Price-action risk management** — invalidation-based stops, reward:risk ≥ 2:1, no averaging down, partial profits.
+- **Crypto research** — time-series momentum and attention effects (Liu & Tsyvinski, *Review of Financial Studies* 2021) and their crash risk; Solidus Labs' finding that ~98.6 % of pump.fun tokens showed rug-pull/pump-and-dump traits ([CoinDesk](https://www.coindesk.com/business/2025/05/07/98-of-tokens-on-pump-fun-have-been-rug-pulls-or-an-act-of-fraud-new-report-says)).
+
 ## The own AI model ("Pilot ML")
 
 Besides the language models above, the bot trains **its own trading model** — free, private, and built only for one question: *"If I buy this coin now, will it reach the take-profit (+40 %) before the stop-loss (−15 %) within 24 hours?"*
@@ -150,8 +167,11 @@ How it works:
 1. **Chart memory** — the bot saves the 15-minute price chart of every coin it looks at (from GeckoTerminal) into `data/ml/candles/`, and keeps extending it. Coins that later crash stay in the archive, so the model also learns what a rug pull looks like beforehand. The first training also collects ~20 days of charts for the most-traded Solana coins.
 2. **Chart analysis** — at every moment it computes ~20 technical signals: returns over 15 min/1 h/4 h/24 h, RSI, EMA trend (9/21/96), volatility, ATR, position in the 24 h range, distance from the high/low, VWAP, volume surges, upper wicks (selling into pumps), green-candle streaks.
 3. **Training** — [LightGBM](https://lightgbm.readthedocs.io) (gradient-boosted trees, a standard tool in quantitative trading) learns which combinations of signals came before a win. It retrains itself **every week** with the newly collected charts (and you can press *Retrain* in the app).
-4. **Honest test** — every training is tested **walk-forward**: trained on older data, tested on the most recent days it has never seen (with a 24 h gap so nothing leaks). It is compared with "buy everything" and a simple momentum rule, after 1 % fees. The bot only trades on it when it beats both; the app shows these numbers on the Bot tab.
-5. **Using it** — pick *Pilot ML* as the brain (Settings → AI model) and it buys what it rates above its tested threshold. Whatever brain you use, its probability and the chart analysis are also given to Claude/Ollama/OpenRouter/Grok, and the coin screen shows a candlestick chart with RSI, trend, volume and the model's estimate.
+4. **Honest test** — every training is tested on the most recent days **and on coins it never saw** (with a 24 h gap so nothing leaks), against "buy everything" and a simple momentum rule, after 1 % fees. It must also pass a significance check (average return at least ~1 standard error above zero), so a lucky streak doesn't count. Passing this allows **paper trading**.
+5. **Live check before real money** — charts collected from coins that are popular *today* make almost any signal look good (survivorship bias: the losers were never collected). So the bot separately tracks charts it recorded *after* it started watching a coin; the model must also win on those before it may trade **real money**. The app shows both tests on the Bot tab.
+6. **Using it** — pick *Pilot ML* as the brain (Settings → AI model) and it buys what it rates above its tested threshold. Whatever brain you use, its probability and the chart analysis are also given to Claude/Ollama/OpenRouter/Grok, and the coin screen shows a candlestick chart with RSI, trend, volume and the model's estimate.
+
+**First result (honest):** trained here on 32 coins / 26 days, the model *looked* great at first (picks winning 40 %, +5.8 % per trade) — until the checks above exposed survivorship bias through "coin age". Corrected and tested on unseen coins it was **not distinguishable from luck** (+0.4 % per trade, t = 0.08), so the bot does not trade on it yet. What *was* statistically clear: buying trending meme coins at random loses about 1.4 % per trade (t = −2.6) — which is why the filters and stop-losses matter more than any prediction. On your server it keeps collecting charts and retests itself every week.
 
 Be realistic: a model like this finds small statistical edges at best. Meme coins are driven by hype that charts don't show, and patterns that worked last month can stop working. That's why it's tested on unseen data every week and the safety rules always apply. Train it from the command line with `npm run ml:train` (in `bot/`).
 
@@ -177,7 +197,7 @@ Useful commands (in `bot/`): `npm test` (safety-rule tests), `npm run scan` (sho
 
 ## Status / what still needs a real-world check
 
-Tested here: all bot logic and safety rules (unit tests); live market data from DexScreener, Jupiter, RugCheck and CoinGecko; paper trades with real Jupiter quotes (buy → partial sell → full sell); every API endpoint; the app's TypeScript and its iOS bundle build; and every screen rendered at iPhone size.
+Tested here: all bot logic and safety rules (unit tests); the own model's tree evaluation matches LightGBM exactly; chart-photo analysis end-to-end against a mock vision model; live market data from DexScreener, Jupiter, RugCheck and CoinGecko; paper trades with real Jupiter quotes (buy → partial sell → full sell); every API endpoint; the app's TypeScript and its iOS bundle build; and every screen rendered at iPhone size.
 
 **Not testable from my build environment. Check these yourself with small amounts:**
 - the Phantom connect/sign flow on a real iPhone;

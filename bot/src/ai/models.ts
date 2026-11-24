@@ -57,7 +57,7 @@ export function availableModels(): ModelInfo[] {
   if (own) {
     out.push({
       id: "ml/pilot",
-      label: `Pilot ML — own trained model (free)${own.metrics.useful ? "" : " ⚠ not proven yet"}`,
+      label: `Pilot ML — own trained model (free)${own.metrics.tradeReady ? "" : own.metrics.useful ? " · paper only" : " ⚠ not proven yet"}`,
       provider: "ml",
       name: "pilot",
       inUsd: 0,

@@ -21,6 +21,11 @@ export interface Archive {
   symbol: string;
   /** Pool creation time (ms), when known. */
   createdAt?: number;
+  /**
+   * When the bot started watching this coin (ms). Candles after this moment were recorded
+   * "forward" — free of survivorship bias — and are used for the honest live check.
+   */
+  firstSeenAt?: number;
   updatedAt: number;
   candles: Candle[];
 }
@@ -124,6 +129,7 @@ export async function updateArchive(
       mint: info.mint,
       symbol: info.symbol,
       createdAt: info.createdAt ?? existing?.createdAt,
+      firstSeenAt: existing ? existing.firstSeenAt : Date.now(),
       updatedAt: Date.now(),
       candles,
     };

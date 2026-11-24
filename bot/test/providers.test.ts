@@ -57,7 +57,7 @@ process.env.XAI_PRICE_OUT_USD = "6";
 
 const { availableModels, resolveModel } = await import("../src/ai/models.ts");
 const { extractJson, jsonSchemaFor, structuredChat } = await import("../src/ai/providers.ts");
-const { aiDecide } = await import("../src/ai/claude.ts");
+const { aiDecide, aiChartImage } = await import("../src/ai/claude.ts");
 const { DEFAULT_SETTINGS } = await import("../src/store.ts");
 
 const Opinion = z.object({
@@ -144,4 +144,52 @@ test("full trading decision through a local Ollama model", async () => {
   assert.equal(d!.buys[0].confidence, 1);
   assert.equal(d!.buys[0].sizePct, 25);
   assert.equal(d!.exits[0].sellPct, 100);
+});
+
+test("chart photo: the image reaches Ollama, with the trading playbook in the instructions", async () => {
+  ollamaReply = JSON.stringify({
+    is_chart: true,
+    verdict: "hold",
+    confidence: 1.4,
+    timeframe: "15m",
+    trend: "up",
+    wyckoff_phase: "markup",
+    patterns: [{ name: "Bull flag", meaning: "Continuation after a strong move" }],
+    support: ["$0.010"],
+    resistance: ["$0.014"],
+    volume_read: "Volume rising on green candles",
+    momentum_read: "RSI about 64",
+    entry_idea: "On a breakout above $0.014 with volume",
+    stop_loss_idea: "Below $0.0095",
+    take_profit_idea: "$0.018 (measured move)",
+    summary: "Healthy uptrend, wait for the breakout.",
+    risks: ["Meme coin, can dump fast"],
+  });
+  const before = seen.length;
+  const r = await aiChartImage({ base64: "aGVsbG8=", mediaType: "image/jpeg" }, "BONK 15m", { ...DEFAULT_SETTINGS });
+  assert.equal(r.read?.verdict, "hold");
+  assert.equal(r.read?.confidence, 1); // clamped to 0..1
+  const req = seen.slice(before).find((x) => x.path === "/api/chat")!.body as any;
+  assert.deepEqual(req.messages[1].images, ["aGVsbG8="]);
+  assert.match(req.messages[0].content, /TRADING PLAYBOOK/);
+  assert.match(req.messages[0].content, /Wyckoff/);
+  assert.match(req.messages[1].content, /BONK 15m/);
+});
+
+test("chart photo via an OpenAI-compatible API (Grok) sends the image as a data URL", async () => {
+  const before = seen.length;
+  await aiChartImage({ base64: "aGVsbG8=", mediaType: "image/png" }, undefined, { ...DEFAULT_SETTINGS, aiModel: "xai/grok-test" });
+  const reqs = seen.slice(before).filter((x) => x.path === "/v1/chat/completions");
+  assert.ok(reqs.length >= 1);
+  const user = (reqs[reqs.length - 1].body as any).messages[1];
+  assert.equal(user.content[1].type, "image_url");
+  assert.equal(user.content[1].image_url.url, "data:image/png;base64,aGVsbG8=");
+});
+
+test("trading decisions also carry the playbook", async () => {
+  ollamaReply = JSON.stringify({ market_view: "x", buys: [], exits: [] });
+  const before = seen.length;
+  await aiDecide({ candidates: [], positions: [], freeSlots: 1, cashEur: 10, equityEur: 10, dailyPnlPct: 0, recentTrades: [] }, { ...DEFAULT_SETTINGS });
+  const req = seen.slice(before).find((x) => x.path === "/api/chat")!.body as any;
+  assert.match(req.messages[0].content, /RISK MANAGEMENT/);
 });

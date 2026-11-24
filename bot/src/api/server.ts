@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { addEvent, portfolio, save, state } from "../store.js";
 import { bot, positionPnlPct, positionValueEur } from "../engine/bot.js";
 import { breakers } from "../risk/rules.js";
-import { aiAvailable, aiBudgetLeft, aiCanSpend, aiOpinion, briefingSupported } from "../ai/claude.js";
+import { aiAvailable, aiBudgetLeft, aiCanSpend, aiChartImage, aiOpinion, briefingSupported, visionModel } from "../ai/claude.js";
 import { availableModels, resolveModel } from "../ai/models.js";
 import { discoverCandidates, pairToCandidate } from "../market/discovery.js";
 import { getBestPairs, searchPairs } from "../market/dexscreener.js";
@@ -361,6 +361,29 @@ app.post("/api/token/:mint/ai", async (c) => {
   return c.json({ opinion });
 });
 
+/** Chart photo analysis: the app sends a screenshot, the AI reads the candles. */
+app.post("/api/chart/analyze", async (c) => {
+  const body = z
+    .object({
+      // ~5 MB image limit (base64 is 4/3 of the size); the app resizes photos well below this.
+      image: z.string().min(100).max(7_000_000),
+      mediaType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif"]).default("image/jpeg"),
+      note: z.string().max(300).optional(),
+    })
+    .parse(await c.req.json());
+  const m = visionModel(state.settings);
+  if (!m) throw new UserError("No AI is configured on the server (set ANTHROPIC_API_KEY, OLLAMA_MODELS, OPENROUTER_API_KEY or XAI_API_KEY).");
+  if (!m.free && aiBudgetLeft(state.settings) < 0.05) throw new UserError("Today's AI budget is used up.");
+  const r = await aiChartImage({ base64: body.image.replace(/^data:[^;]+;base64,/, ""), mediaType: body.mediaType }, body.note, state.settings);
+  if (!r.read) {
+    throw new UserError(
+      `The AI couldn't read this chart${r.error ? ` (${r.error.slice(0, 160)})` : ""}.` +
+        (m.provider === "claude" ? "" : " With Ollama/OpenRouter/Grok, pick a model that can see images."),
+    );
+  }
+  return c.json({ analysis: r.read, model: r.model });
+});
+
 /** Last 24 h price chart + chart analysis + own-model probability for one coin. */
 app.get("/api/token/:mint/chart", async (c) => {
   const mint = addr.parse(c.req.param("mint"));
@@ -373,7 +396,15 @@ app.get("/api/token/:mint/chart", async (c) => {
     chart: cand.chart ?? null,
     mlProb: cand.mlProb ?? null,
     model: m
-      ? { threshold: m.threshold, baseWinRate: m.data.baseWinRate, tpPct: m.params.tpPct, slPct: m.params.slPct, hours: m.params.horizonBars / 4, useful: m.metrics.useful }
+      ? {
+          threshold: m.threshold,
+          baseWinRate: m.data.baseWinRate,
+          tpPct: m.params.tpPct,
+          slPct: m.params.slPct,
+          hours: m.params.horizonBars / 4,
+          useful: m.metrics.useful,
+          tradeReady: m.metrics.tradeReady,
+        }
       : null,
   });
 });

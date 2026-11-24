@@ -11,7 +11,8 @@ import { save, state, today } from "../store.js";
 import type { AiDecision, AiExit, Candidate, Lang, Settings } from "../types.js";
 import { log, errMsg } from "../util/log.js";
 import { availableModels, costUsd, resolveModel, type ModelInfo } from "./models.js";
-import { structuredChat } from "./providers.js";
+import { structuredChat, type ImageInput } from "./providers.js";
+import { TRADING_PLAYBOOK } from "./playbook.js";
 import { getMarketContext } from "../market/context.js";
 import { getModel } from "../ml/model.js";
 import { mlOpinion } from "../ml/brain.js";
@@ -78,7 +79,8 @@ async function ask<T extends z.ZodType>(
   system: string,
   userText: string,
   schema: T,
-): Promise<{ data: z.infer<T> | null; usd: number }> {
+  image?: ImageInput,
+): Promise<{ data: z.infer<T> | null; usd: number; error?: string }> {
   try {
     if (m.provider === "claude") {
       if (!client) return { data: null, usd: 0 };
@@ -88,7 +90,17 @@ async function ask<T extends z.ZodType>(
         ...fallbackParams(m),
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
         output_config: { effort: state.settings.aiEffort, format: betaZodOutputFormat(schema) },
-        messages: [{ role: "user", content: userText }],
+        messages: [
+          {
+            role: "user",
+            content: image
+              ? [
+                  { type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } },
+                  { type: "text", text: userText },
+                ]
+              : userText,
+          },
+        ],
       });
       const usd = recordClaudeUsage(m, res.usage);
       if (res.stop_reason === "refusal") {
@@ -98,13 +110,13 @@ async function ask<T extends z.ZodType>(
       if (!res.parsed_output) log.warn(`AI ${what} could not be parsed (stop_reason=${res.stop_reason})`);
       return { data: (res.parsed_output ?? null) as z.infer<T> | null, usd };
     }
-    const r = await structuredChat(m, system, userText, schema);
+    const r = await structuredChat(m, system, userText, schema, image);
     const usd = addSpend(m, r.usd, `${r.inTokens} in / ${r.outTokens} out tokens`);
     if (!r.data) log.warn(`AI ${what} (${m.id}) answer unusable: ${r.error ?? "unknown"}`);
-    return { data: r.data as z.infer<T> | null, usd };
+    return { data: r.data as z.infer<T> | null, usd, error: r.error };
   } catch (e) {
     logApiError(what, e);
-    return { data: null, usd: 0 };
+    return { data: null, usd: 0, error: errMsg(e) };
   }
 }
 
@@ -125,7 +137,7 @@ What the data means:
 - trending_rank: position on GeckoTerminal trending (1 = hottest). new_profile: the team just paid for a DexScreener profile.
 - rule_score: a 0-1 heuristic of momentum, buy pressure, volume acceleration, liquidity, hype and safety. Use it as one input, not the answer.
 - chart_24h: technical analysis of the last 24h of 15-minute candles: trend (EMA 9/21/96), RSI(14), position in the 24h range, distance below the 24h high, volume vs. average, volatility, green candles, upper wicks (selling into pumps), price vs. VWAP. Buying right after a vertical move with RSI > 80 and long upper wicks is usually late; a fresh uptrend with rising volume and room to the 24h high is better.
-- own_model_win_probability: output of the bot's own machine-learning model trained on thousands of past Solana charts (see own_model for what it means and how well it tested). Compare it with own_model.base_win_rate; trust it more when own_model.beats_simple_baselines is true.
+- own_model_win_probability: output of the bot's own machine-learning model trained on thousands of past Solana charts (see own_model for what it means and how well it tested). Compare it with own_model.base_win_rate; trust it more when own_model.beats_simple_baselines_on_unseen_coins and confirmed_on_forward_data are true, and treat it as weak evidence otherwise.
 - safety: RugCheck result. "warn" items (e.g. mutable metadata) are common; weigh them.
 - market_context: the Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed) and coins/categories trending on CoinGecko right now. Meme coins do best in greed phases; in fear, be much more selective.
 - briefing: a recent research summary of the crypto/meme market and narratives (may be missing). Coins that fit the narratives currently getting attention have better odds.
@@ -135,7 +147,11 @@ Rules for your answer:
 - Buy at most as many coins as there are free slots. Buying nothing is often correct, especially in a weak market (SOL falling, most memes red).
 - Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit before its stop-loss.
 - Every candidate you were given must appear in "buys" (as buy or skip); every open position must appear in "exits" (hold or sell). Copy each "mint" exactly.
-- Keep each reason to one or two short sentences that a non-expert can understand.`;
+- Keep each reason to one or two short sentences that a non-expert can understand.
+
+Apply this trading knowledge:
+
+${TRADING_PLAYBOOK}`;
 
 const DecisionSchema = z.object({
   market_view: z.string().describe("One or two sentences on current market conditions for meme coins."),
@@ -203,7 +219,8 @@ function ownModelInfo() {
     base_win_rate: m.data.baseWinRate,
     tested_on_unseen_days: m.metrics.testDays,
     test_win_rate_of_its_picks: m.metrics.model.winRate,
-    beats_simple_baselines: m.metrics.useful,
+    beats_simple_baselines_on_unseen_coins: m.metrics.useful,
+    confirmed_on_forward_data: m.metrics.tradeReady,
   };
 }
 
@@ -340,6 +357,61 @@ export async function aiOpinion(c: Candidate, s: Settings): Promise<Opinion | nu
   })}`;
   const { data } = await ask(m, "opinion", DECISION_SYSTEM, userText, OpinionSchema);
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Chart photo analysis: the owner sends a screenshot of a chart, the AI reads the candles
+// ---------------------------------------------------------------------------
+
+const CHART_SYSTEM = `You are an experienced technical analyst helping one private person read a price chart they photographed or screenshotted (often a Solana meme coin from DexScreener, Phantom, Birdeye or TradingView). Read the candles, volume, any visible indicators and price labels, then give a clear verdict for someone who would buy now: buy, sell (if they hold it), hold (wait/keep), or avoid.
+
+Method: work through the playbook's chart-reading order (timeframe → trend → support/resistance → volume → momentum → candles → patterns → Wyckoff phase), then the meme-coin red flags, then risk management. Quote price levels exactly as printed on the chart's axis when you can read them; otherwise describe levels relative to the chart ("the breakout level around the middle of the range"). Never invent numbers you cannot see.
+
+If the image is not a price chart or is unreadable, set is_chart to false, verdict to "avoid", confidence to 0, and explain in the summary what you see instead.
+
+${TRADING_PLAYBOOK}`;
+
+const ChartReadSchema = z.object({
+  is_chart: z.boolean(),
+  verdict: z.enum(["buy", "sell", "hold", "avoid"]),
+  confidence: z.number().describe("0 to 1, rarely above 0.75"),
+  timeframe: z.string().describe("Candle interval if visible, else 'unknown'"),
+  trend: z.enum(["up", "down", "sideways", "unclear"]),
+  wyckoff_phase: z.string().describe("accumulation, markup, distribution, markdown or unclear"),
+  patterns: z.array(z.object({ name: z.string(), meaning: z.string() })),
+  support: z.array(z.string()),
+  resistance: z.array(z.string()),
+  volume_read: z.string(),
+  momentum_read: z.string(),
+  entry_idea: z.string(),
+  stop_loss_idea: z.string(),
+  take_profit_idea: z.string(),
+  summary: z.string().describe("2-4 sentences in plain language"),
+  risks: z.array(z.string()),
+});
+
+export type ChartRead = z.infer<typeof ChartReadSchema>;
+
+/** Picks a brain that can see images: the selected one if it's a language model, else Claude. */
+export function visionModel(s: Settings): ModelInfo | null {
+  const all = availableModels().filter((m) => m.provider !== "ml");
+  const selected = all.find((m) => m.id === s.aiModel);
+  return selected ?? all.find((m) => m.provider === "claude") ?? all[0] ?? null;
+}
+
+export async function aiChartImage(
+  image: ImageInput,
+  note: string | undefined,
+  s: Settings,
+): Promise<{ read: ChartRead | null; model: string | null; error?: string }> {
+  const m = visionModel(s);
+  if (!m) return { read: null, model: null, error: "no-model" };
+  const userText = `Analyse this chart.${note ? ` The owner adds: "${note.slice(0, 300)}"` : ""} ${langLine(s.language)}`;
+  const r = await ask(m, "chart photo", CHART_SYSTEM, userText, ChartReadSchema, image);
+  if (r.data) {
+    r.data.confidence = Math.max(0, Math.min(1, Number.isFinite(r.data.confidence) ? r.data.confidence : 0));
+  }
+  return { read: r.data, model: m.label, error: r.error };
 }
 
 function logApiError(what: string, e: unknown) {

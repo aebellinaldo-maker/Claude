@@ -18,6 +18,8 @@ export function OwnModelCard() {
 
   const m = s.model;
   const tr = s.training;
+  const tStat = m?.metrics.model.tStat ?? 0;
+  const luck: "low" | "medium" | "high" = tStat >= 2 ? "high" : tStat >= 1 ? "medium" : "low";
   const pct = (x: number | null | undefined) => (x === null || x === undefined ? "–" : `${Math.round(x * 100)}%`);
   const ret = (x: number | null | undefined) => (x === null || x === undefined ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(2)}%`);
 
@@ -62,12 +64,37 @@ export function OwnModelCard() {
           </T>
           <Divider />
           <T small bold>
-            {t("testHeader", { d: m.metrics.testDays })}
+            {t("testHeader", { d: m.metrics.testDays, c: m.metrics.testCoins })}
           </T>
           <StatRow label={t("testPicks")} st={m.metrics.model} highlight />
           <StatRow label={t("testAll")} st={m.metrics.buyEverything} />
           <StatRow label={t("testMomentum")} st={m.metrics.momentumRule} />
-          <Note kind={m.metrics.useful ? "success" : "warn"}>{m.metrics.useful ? t("proven") : t("notProvenLong")}</Note>
+          <Row>
+            <T small dim>
+              {t("luckLabel")}
+            </T>
+            <Spacer />
+            <T small bold color={luck === "high" ? colors.green : luck === "medium" ? colors.yellow : colors.red}>
+              {t(`luck_${luck}` as TKey)}
+            </T>
+          </Row>
+          <Divider />
+          <T small bold>
+            {t("liveCheck")}
+          </T>
+          {m.metrics.forward.available ? (
+            <>
+              <StatRow label={t("testPicks")} st={m.metrics.forward.model} highlight />
+              <StatRow label={t("testAll")} st={m.metrics.forward.buyEverything} />
+            </>
+          ) : (
+            <T small faint>
+              {t("liveCheckWaiting", { n: m.metrics.forward.samples })}
+            </T>
+          )}
+          <Note kind={m.metrics.tradeReady ? "success" : m.metrics.useful ? "info" : "warn"}>
+            {m.metrics.tradeReady ? t("statusTradeReady") : m.metrics.useful ? t("statusPaperOnly") : t("notProvenLong")}
+          </Note>
           {m.importance.length ? (
             <T small faint>
               {t("topSignals")}: {m.importance.slice(0, 4).map((i) => i.feature.replace(/_/g, " ")).join(", ")}

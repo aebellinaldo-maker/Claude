@@ -20,7 +20,7 @@ export async function analyzeChart(c: Candidate): Promise<void> {
   let i = grid.length - 1;
   if (grid[i][0] + STEP_SEC > nowSec) i--;
   if (i < 0 || nowSec - grid[i][0] > 2 * 3600) return; // chart data is stale
-  const x = featuresAt(grid, i, a.createdAt);
+  const x = featuresAt(grid, i);
   if (!x) return;
   c.chart = describeChart(x);
   const p = predict(x);
@@ -87,11 +87,11 @@ export function mlOpinion(c: Candidate, lang: Lang) {
   points.push(
     m.metrics.useful
       ? de
-        ? `Auf ${m.metrics.testDays} ungesehenen Tagen getestet: Trefferquote ${pct(m.metrics.model.winRate ?? 0)} bei seinen Käufen.`
-        : `Tested on ${m.metrics.testDays} unseen days: ${pct(m.metrics.model.winRate ?? 0)} win rate on its picks.`
+        ? `Getestet auf ${m.metrics.testDays} Tagen und ${m.metrics.testCoins} Coins, die es nie gesehen hat: Trefferquote ${pct(m.metrics.model.winRate ?? 0)} bei seinen Käufen${m.metrics.tradeReady ? ", auch live bestätigt" : " (live noch nicht bestätigt)"}.`
+        : `Tested on ${m.metrics.testDays} days and ${m.metrics.testCoins} coins it never saw: ${pct(m.metrics.model.winRate ?? 0)} win rate on its picks${m.metrics.tradeReady ? ", also confirmed live" : " (not yet confirmed live)"}.`
       : de
-        ? "Achtung: Das Modell hat im Test die einfachen Regeln noch nicht geschlagen."
-        : "Caution: in testing, the model has not beaten simple rules yet.",
+        ? "Achtung: Das Modell hat im Test die einfachen Regeln noch nicht geschlagen — nimm seine Zahl nur als groben Hinweis."
+        : "Caution: in testing, the model hasn't beaten simple rules yet — treat its number as a rough hint only.",
   );
   return { verdict, risk, summary, points } as const;
 }

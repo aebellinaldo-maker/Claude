@@ -53,7 +53,7 @@ export function ChartCard({ mint }: { mint: string }) {
           <Row>
             <T small bold>
               🤖 {t("ownModel")}
-              {data.model.useful ? "" : ` (${t("notProven")})`}
+              {data.model.tradeReady ? "" : data.model.useful ? ` (${t("paperOnly")})` : ` (${t("notProven")})`}
             </T>
             <Spacer />
             <T bold color={data.mlProb >= data.model.threshold ? colors.green : data.mlProb >= data.model.baseWinRate ? colors.text : colors.red}>

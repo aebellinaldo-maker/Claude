@@ -135,7 +135,8 @@ export async function trainModel(opts: { collect?: boolean } = {}): Promise<void
   Object.assign(training, { running: true, phase: "collecting", startedAt: Date.now(), finishedAt: undefined, error: undefined, progress: undefined, log: [] });
   try {
     const s = state.settings;
-    if (opts.collect || listArchives().length < 150) await collectCharts();
+    // Broaden the archive while it's small (unless told otherwise).
+    if (opts.collect ?? listArchives().length < 150) await collectCharts();
     training.phase = "dataset";
     const horizonBars = Math.round(s.maxHoldHours * 4);
     const ds = await buildDataset({
@@ -154,7 +155,13 @@ export async function trainModel(opts: { collect?: boolean } = {}): Promise<void
     const m = loadModel();
     if (!m) throw new Error("The new model could not be loaded");
     training.phase = "done";
-    note(m.metrics.useful ? "New model is active ✓" : "New model saved, but it does not beat simple rules on unseen data — the bot will not trade on it.");
+    note(
+      m.metrics.tradeReady
+        ? "New model is active for paper and real money ✓"
+        : m.metrics.useful
+          ? "New model is active for paper trading; real money waits for the forward check"
+          : "New model saved, but it does not beat simple rules on unseen coins — the bot will not trade on it.",
+    );
   } catch (e) {
     training.phase = "failed";
     training.error = errMsg(e);
