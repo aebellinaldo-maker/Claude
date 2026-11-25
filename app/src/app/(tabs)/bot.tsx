@@ -10,6 +10,8 @@ import { colors, pnlColor } from "../../lib/theme";
 import { Big, Button, Card, Divider, H, Loading, Note, Pill, Row, Screen, Spacer, Sparkline, T, TokenAvatar } from "../../components/ui";
 import { OwnModelCard } from "../../components/own-model-card";
 import { BudgetCard } from "../../components/budget-card";
+import { StrategyCard } from "../../components/strategy-card";
+import { StatsCard } from "../../components/stats-card";
 
 export default function BotScreen() {
   const { t, lang, api, hasServer } = useApp();
@@ -81,6 +83,7 @@ export default function BotScreen() {
     >
       <Row>
         <Pill label={`● ${stateLabel}`} color={stateColor} bg={colors.card} />
+        {s.riskMode === "moonshot" ? <Pill label={`🚀 ${t("moonshot")}`} color={colors.yellow} bg={colors.yellowDim} /> : null}
         <Pill
           label={s.mode === "paper" ? `🧪 ${t("modePaper")}` : `💶 ${t("modeReal")}`}
           color={s.mode === "paper" ? colors.accent : colors.yellow}
@@ -167,6 +170,9 @@ export default function BotScreen() {
       <H>{t("budgetTitle")}</H>
       <BudgetCard mode={s.mode} running={s.running} onChanged={() => void status.reload()} />
 
+      <H>🎯 {t("strategyTitle")}</H>
+      <StrategyCard status={s} onChanged={() => void status.reload()} />
+
       <H>{t("positions")}</H>
       <Card style={{ paddingVertical: 6 }}>
         {s.positions.length === 0 ? (
@@ -203,6 +209,9 @@ export default function BotScreen() {
           ))
         )}
       </Card>
+
+      <H>📊 {t("trackRecord")}</H>
+      <StatsCard stats={s.stats} />
 
       <H>🧠 AI</H>
       <Card>

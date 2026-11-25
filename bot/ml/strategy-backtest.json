@@ -1,0 +1,30 @@
+{
+  "createdAt": 1795629455527,
+  "coins": 56,
+  "testDays": 9,
+  "trades": 276,
+  "normal": {
+    "trades": 276,
+    "avgPct": -3.7,
+    "medianPct": -10.1,
+    "winRate": 0.312,
+    "doubled": 0,
+    "fiveX": 0,
+    "worstPct": -15.9,
+    "bestPct": 53,
+    "tenXChance": 0,
+    "halfChance": 0.56525
+  },
+  "moonshot": {
+    "trades": 276,
+    "avgPct": -6.1,
+    "medianPct": -30.7,
+    "winRate": 0.246,
+    "doubled": 0.0543,
+    "fiveX": 0,
+    "worstPct": -30.7,
+    "bestPct": 270.6,
+    "tenXChance": 0.00575,
+    "halfChance": 0.9825
+  }
+}

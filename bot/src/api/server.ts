@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { tradeStats } from "../engine/stats.js";
+import { strategies } from "../risk/profiles.js";
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
@@ -83,6 +85,9 @@ app.get("/api/bot/status", async (c) => {
     running: state.running,
     paperBudgetEur: s.paperBudgetEur,
     mode: state.mode,
+    riskMode: s.riskMode,
+    strategies: strategies(s),
+    stats: tradeStats(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)), 5),
     killSwitch: state.killSwitch,
     lastScanAt: state.lastScanAt ?? null,
     nextScanAt: state.running && state.lastScanAt ? state.lastScanAt + s.scanIntervalMin * 60_000 : null,
@@ -237,6 +242,7 @@ const SettingsPatch = z
     stopAtLossPct: z.number().min(0).max(100),
     stopAt: z.number().min(0),
     closeOnStop: z.boolean(),
+    riskMode: z.enum(["normal", "moonshot"]),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),
     maxPositions: z.number().int().min(1).max(10),

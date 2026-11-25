@@ -45,10 +45,70 @@ export interface BotPosition {
   reason: string;
 }
 
+export type RiskMode = "normal" | "moonshot";
+
+export interface StrategyInfo {
+  stopLossPct: number;
+  takeProfitPct: number;
+  takeProfitSellPct: number;
+  trailingStopPct: number;
+  maxHoldHours: number;
+  maxPositions: number;
+  maxPositionPct: number;
+}
+
+export interface StrategyResult {
+  avgPct: number;
+  medianPct: number;
+  winRate: number;
+  doubled: number;
+  fiveX: number;
+  bestPct: number;
+  tenXChance: number;
+  halfChance: number;
+}
+
+export interface RoundTrip {
+  mint: string;
+  symbol: string;
+  openedAt: number;
+  closedAt: number;
+  costEur: number;
+  pnlEur: number;
+  pnlPct: number;
+  entryTrigger: string;
+  exitTriggers: string[];
+  why: string;
+}
+
+export interface TradeStats {
+  closed: number;
+  open: number;
+  wins: number;
+  winRate: number | null;
+  avgWinPct: number | null;
+  avgLossPct: number | null;
+  profitFactor: number | null;
+  avgTradePct: number | null;
+  realizedEur: number;
+  best: { symbol: string; pnlPct: number } | null;
+  worst: { symbol: string; pnlPct: number } | null;
+  avgHoldHours: number | null;
+  verdict: "too_early" | "good" | "breakeven" | "losing";
+  recent: RoundTrip[];
+}
+
 export interface BotStatus {
   running: boolean;
   paperBudgetEur: number;
   mode: "paper" | "real";
+  riskMode: RiskMode;
+  strategies: {
+    normal: StrategyInfo;
+    moonshot: StrategyInfo;
+    backtest: { createdAt: number; coins: number; testDays: number; trades: number; normal: StrategyResult; moonshot: StrategyResult } | null;
+  };
+  stats: TradeStats;
   killSwitch: { tripped: boolean; reason?: string; at?: number };
   lastScanAt: number | null;
   nextScanAt: number | null;
@@ -100,6 +160,7 @@ export interface BotSettings {
   stopAtLossPct: number;
   stopAt: number;
   closeOnStop: boolean;
+  riskMode: RiskMode;
   scanIntervalMin: number;
   monitorIntervalSec: number;
   maxPositions: number;

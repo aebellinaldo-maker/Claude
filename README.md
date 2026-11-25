@@ -127,7 +127,7 @@ Every 10 minutes (scan) and every 30 seconds (protection):
 3. **Rug-pull check** — RugCheck.xyz: rejects mint/freeze authority, "danger" risks, high risk scores.
 4. **Scoring** — momentum, buy pressure, volume acceleration, liquidity, hype (boosts, trending rank, socials).
 5. **Chart analysis** — the 24 h candlestick chart of each shortlisted coin is analysed (trend, RSI, volume, range…) and the bot's own trained model estimates its chance of hitting the take-profit first (see [the own AI model](#the-own-ai-model-pilot-ml)).
-6. **AI decision** — Claude gets the top coins, your open positions, recent wins/losses (to learn from them) and a research briefing (it searches the web for market mood, hot narratives, scams). It answers with buy/skip/sell, confidence and a plain-language reason (in your language). Only coins that passed the filters can be bought.
+6. **AI decision** — Claude gets the top coins, your open positions, its own trading journal (closed trades with why it bought and how they ended, win rate, profit factor — to learn from them), the strategy in use (Normal or Moonshot) and a research briefing (it searches the web for market mood, hot narratives, scams). It answers with buy/skip/sell, confidence and a plain-language reason (in your language). Only coins that passed the filters can be bought.
 7. **Execution** — swaps through Jupiter (best price across Solana DEXes), with price-impact limits. Paper mode uses the exact same Jupiter quotes.
 8. **Protection (every 30 s)** — stop-loss, take-profit (sells half), trailing stop, max hold time, instant exit if liquidity collapses (rug pull), daily loss limit, kill switch.
 
@@ -176,6 +176,24 @@ Open the **Chart AI** tab, pick a screenshot (or take a photo of a screen), opti
 
 It needs an AI that can see images: any Claude model works; with Ollama/OpenRouter/Grok, choose a vision model (e.g. a Gemma 3, Qwen-VL or LLaVA model in Ollama). The app shrinks photos before sending. Cost with Claude Opus ≈ $0.03–0.08 per chart, with Haiku a fraction of a cent. It's an opinion based on probabilities — it can't see news, holders, or a team about to sell.
 
+## Strategy: Normal vs. Moonshot, and the track record
+
+On the Bot tab you choose how the bot trades:
+
+- **🛡️ Normal** — the settings above: up to 3 coins, sells half at +40 %, stop-loss −15 %.
+- **🚀 Moonshot** — fewer, bigger bets that may run: up to 2 coins with up to 60 % of the money each, stop-loss −30 %, sells 35 % at +200 % (that is already more than the stake) and lets the rest ride with a trailing stop 45 % below the peak, for up to 72 h. The daily loss limit and the kill switch stay on.
+
+The Moonshot values come from `npm run backtest:exits` (in `bot/`), which replays the bot's real exit rules candle by candle on stored charts. They were chosen on the earlier ~60 % of the days only, then checked on the last 9 days, which they never saw (56 coins, 276 momentum entries, 1 % fees):
+
+| | Avg per trade | Trades that doubled | €10 → €100 within 60 trades | Dropped to half within 60 trades |
+|---|---|---|---|---|
+| Normal | −3.7 % | 0 % | 0 % | 57 % |
+| Moonshot | −6.1 % | 5.4 % | 0.6 % | 98 % |
+
+In plain words: no setting reliably turns €10 into €100. Moonshot trades many small results for rare big wins and bigger losses — closer to a lottery ticket than an edge. (These buys use a simple momentum rule, not the AI; the AI's real results show up in the track record.) The app shows these numbers next to the switch.
+
+**📊 Track record** (Bot tab) groups the trades into finished round trips and shows the win rate, average win vs. average loss, profit factor (euros won ÷ euros lost) and the latest trades with why they were bought. It only gives a verdict after 30 finished trades — before that, results are mostly luck.
+
 ## The AI's trading knowledge
 
 Every AI brain gets a **trading playbook** (`bot/src/ai/playbook.ts`) distilled from well-regarded technical-analysis teaching and research:
@@ -185,6 +203,8 @@ Every AI brain gets a **trading playbook** (`bot/src/ai/playbook.ts`) distilled 
 - **Wyckoff method** — accumulation, markup, distribution, markdown; springs and upthrusts (the shape of a pump-and-dump).
 - **Price-action risk management** — invalidation-based stops, reward:risk ≥ 2:1, no averaging down, partial profits.
 - **Crypto research** — time-series momentum and attention effects (Liu & Tsyvinski, *Review of Financial Studies* 2021) and their crash risk; Solidus Labs' finding that ~98.6 % of pump.fun tokens showed rug-pull/pump-and-dump traits ([CoinDesk](https://www.coindesk.com/business/2025/05/07/98-of-tokens-on-pump-fun-have-been-rug-pulls-or-an-act-of-fraud-new-report-says)).
+- **Methods of well-known traders**, translated to meme coins — Jesse Livermore (*Reminiscences of a Stock Operator*: ride the trend, cut losses, add only to winners), William O'Neil (CAN SLIM: breakouts on volume, cut losses at 7–8 %, follow the overall market), Mark Minervini (stage-2 uptrends, the Volatility Contraction Pattern), Paul Tudor Jones (defense first, ~5:1 reward:risk, long moving average as trend filter), Ed Seykota and the Turtles (*Market Wizards*, *Way of the Turtle*: small losses, let the few big winners pay), Stanley Druckenmiller (size up only when everything lines up), Van Tharp and the Kelly criterion (expectancy and position sizing), plus common on-chain meme-trader practice ("take out your initial" at 2x, narrative waves, buyer growth vs. exhaustion, not being someone's exit liquidity).
+- **Its own trading journal** — every decision also includes the bot's closed trades: why it bought each coin, how it ended, its win rate, average win vs. loss and profit factor. The AI is told to look for patterns that keep losing and stop repeating them.
 
 ## The own AI model ("Pilot ML")
 

@@ -22,6 +22,12 @@ export interface Settings {
   scanIntervalMin: number;
   monitorIntervalSec: number;
 
+  /**
+   * "normal": the exit/sizing values below. "moonshot": fewer, bigger bets that are allowed
+   * to run (see risk/profiles.ts) — more chance of a big win AND of a big loss.
+   */
+  riskMode: "normal" | "moonshot";
+
   // --- position sizing ---
   maxPositions: number;
   /** Max % of total equity in a single coin. */

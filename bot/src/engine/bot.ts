@@ -7,6 +7,8 @@ import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
 import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
 import { autoStopReason, breakers, buySizeSol, exitSignal, tradeable } from "../risk/rules.js";
+import { effectiveSettings } from "../risk/profiles.js";
+import { tradeStats } from "./stats.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
 import { getTokenHolding } from "../chain/solana.js";
@@ -274,7 +276,7 @@ class Bot {
 
   /** Updates prices, applies hard exit rules and circuit breakers. */
   async monitor() {
-    const s = state.settings;
+    const s = effectiveSettings(state.settings);
     const p = portfolio();
     if (p.positions.length) {
       const prices = await getPrices(p.positions.map((x) => x.mint));
@@ -314,7 +316,7 @@ class Bot {
       const stopReason = state.running && p.startEquityEur > 0 ? autoStopReason(pnlPct, Date.now(), s) : null;
       if (stopReason) {
         state.running = false;
-        s.stopAt = 0; // a planned end time is used once
+        state.settings.stopAt = 0; // a planned end time is used once (s may be a copy)
         if (s.closeOnStop) {
           addEvent("info", l(`AUTO-STOP: ${stopReason}. Selling everything.`, `AUTO-STOPP: ${stopReason}. Alles wird verkauft.`));
           await this.sellAll("auto_stop", stopReason);
@@ -331,7 +333,7 @@ class Bot {
 
   /** Finds candidates, filters them, asks the AI (or rules), and buys. */
   async scan() {
-    const s = state.settings;
+    const s = effectiveSettings(state.settings);
     const p = portfolio();
     const eq = await this.computeEquity();
     const b = breakers(p, eq.totalEur, s);
@@ -442,6 +444,15 @@ class Bot {
           equityEur: eq.totalEur,
           dailyPnlPct: b.dailyPnlPct,
           solChange24hPct: solPrice?.priceChange24h,
+          strategy: {
+            risk_mode: s.riskMode,
+            stop_loss_pct: s.stopLossPct,
+            take_profit_pct: s.takeProfitPct,
+            take_profit_sell_pct: s.takeProfitSellPct,
+            trailing_stop_pct: s.trailingStopPct,
+            max_hold_hours: s.maxHoldHours,
+          },
+          trackRecord: trackRecordForAi(p),
           recentTrades: state.trades
             .filter((t) => t.mode === state.mode)
             .slice(-12)
@@ -502,7 +513,7 @@ class Bot {
   }
 
   private async doBuy(c: Candidate, sizePct: number, trigger: TradeTrigger, reason: string) {
-    const s = state.settings;
+    const s = effectiveSettings(state.settings);
     const p = portfolio();
     if (p.positions.length >= s.maxPositions) return;
     const eq = await this.computeEquity();
@@ -590,7 +601,7 @@ class Bot {
   }
 
   private async doSell(pos: Position, pct: number, trigger: TradeTrigger, reason: string) {
-    const s = state.settings;
+    const s = effectiveSettings(state.settings);
     const p = portfolio();
     try {
       const sol = await getSolPrice();
@@ -669,6 +680,27 @@ class Bot {
   isWatchlist(mint: string) {
     return mint in WATCHLIST;
   }
+}
+
+/** The bot's own closed trades — why it bought and how it ended — so the AI learns from them. */
+function trackRecordForAi(p: PortfolioState) {
+  const st = tradeStats(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)), 12);
+  if (!st.closed) return null;
+  return {
+    closed_trades: st.closed,
+    win_rate: st.winRate,
+    avg_win_pct: st.avgWinPct,
+    avg_loss_pct: st.avgLossPct,
+    profit_factor: st.profitFactor,
+    last_closed: st.recent.map((t) => ({
+      symbol: t.symbol,
+      result_pct: Math.round(t.pnlPct * 10) / 10,
+      held_hours: Math.round(((t.closedAt - t.openedAt) / 3_600_000) * 10) / 10,
+      exit: t.exitTriggers.join("+"),
+      why_bought: t.why.slice(0, 220),
+      days_ago: Math.round(((Date.now() - t.closedAt) / 86_400_000) * 10) / 10,
+    })),
+  };
 }
 
 function describeBreakdown(c: Candidate): string {

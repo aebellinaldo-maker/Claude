@@ -141,11 +141,13 @@ What the data means:
 - safety: RugCheck result. "warn" items (e.g. mutable metadata) are common; weigh them.
 - market_context: the Crypto Fear & Greed Index (0 = extreme fear, 100 = extreme greed) and coins/categories trending on CoinGecko right now. Meme coins do best in greed phases; in fear, be much more selective.
 - briefing: a recent research summary of the crypto/meme market and narratives (may be missing). Coins that fit the narratives currently getting attention have better odds.
-- recent_trades: the bot's own latest results. Learn from them: avoid repeating losing patterns and re-buying coins that just stopped out.
+- recent_trades: the bot's own latest buys and sells.
+- track_record: the bot's closed trades — why each was bought (why_bought), how it ended (result_pct, exit) — plus win rate, average win vs. average loss and profit factor (euros won ÷ euros lost; below 1 = losing money). This is your trading journal. Before buying, look for patterns: which kinds of setups won, which lost (e.g. buying after a big 24h pump, low liquidity, weak volume, a fading narrative)? Don't repeat setups that keep losing; favour the kinds that worked. Don't re-buy a coin that just stopped out unless the picture clearly changed. With fewer than ~30 closed trades the numbers are mostly luck — use them as hints, not proof.
+- strategy: the exit rules code will apply to a coin bought now. risk_mode "normal": steady trades, take-profit at take_profit_pct. risk_mode "moonshot": the owner chose fewer, bigger bets that are allowed to run — take_profit_sell_pct % is sold at take_profit_pct (getting the stake back), the rest rides with a wide trailing stop. In moonshot mode prefer coins with room for a multi-x move (early in a fresh trend or narrative, market cap still small relative to the attention it gets, strong buyer growth) over slow, safe-looking ones, and buy fewer coins with more conviction; never relax the rug-pull caution.
 
 Rules for your answer:
 - Buy at most as many coins as there are free slots. Buying nothing is often correct, especially in a weak market (SOL falling, most memes red).
-- Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit before its stop-loss.
+- Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit (strategy.take_profit_pct) before its stop-loss (strategy.stop_loss_pct).
 - Every candidate you were given must appear in "buys" (as buy or skip); every open position must appear in "exits" (hold or sell). Copy each "mint" exactly.
 - Keep each reason to one or two short sentences that a non-expert can understand.
 
@@ -183,6 +185,10 @@ export interface DecisionInput {
   dailyPnlPct: number;
   solChange24hPct?: number;
   recentTrades: { symbol: string; side: string; trigger: string; pnlPct?: number; hoursAgo: number }[];
+  /** Risk mode and the exit rules code will apply to anything bought now. */
+  strategy?: Record<string, string | number>;
+  /** The bot's closed trades with the reason it bought each one and how it ended. */
+  trackRecord?: Record<string, unknown> | null;
 }
 
 function compactCandidate(c: Candidate) {
@@ -248,6 +254,8 @@ export async function aiDecide(input: DecisionInput, s: Settings): Promise<Decis
     market_context: await getMarketContext().catch(() => null),
     own_model: ownModelInfo(),
     briefing: state.briefing ? { written_hours_ago: Math.round((Date.now() - state.briefing.ts) / 3_600_000), text: state.briefing.text } : null,
+    strategy: input.strategy ?? null,
+    track_record: input.trackRecord ?? null,
     recent_trades: input.recentTrades,
     candidates: input.candidates.slice(0, maxCandidates).map(compactCandidate),
   };

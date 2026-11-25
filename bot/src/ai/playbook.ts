@@ -11,8 +11,15 @@
  *   pump-and-dump characteristics; ~93% of Raydium pools showed soft-rug traits.
  * - Liu & Tsyvinski, "Risks and Returns of Cryptocurrency" (RFS 2021): time-series momentum
  *   and investor attention predict crypto returns; later studies find momentum crashes.
+ *
+ * Section 7 (lessons from well-known traders) is drawn from: Edwin Lefèvre, "Reminiscences of a
+ * Stock Operator" (1923, Jesse Livermore); William O'Neil, "How to Make Money in Stocks" (CAN SLIM);
+ * Mark Minervini, "Trade Like a Stock Market Wizard" (2013); Jack Schwager, "Market Wizards" (1989:
+ * Paul Tudor Jones, Ed Seykota, Richard Dennis); Curtis Faith, "Way of the Turtle" (2007);
+ * Van K. Tharp, "Trade Your Way to Financial Freedom"; J. L. Kelly, "A New Interpretation of
+ * Information Rate" (1956); Stanley Druckenmiller's public interviews.
  */
-export const TRADING_PLAYBOOK = `TRADING PLAYBOOK — distilled from the CMT curriculum, Nison (candlesticks), Bulkowski (pattern statistics), Wyckoff (accumulation/distribution), price-action trading and crypto research.
+export const TRADING_PLAYBOOK = `TRADING PLAYBOOK — distilled from the CMT curriculum, Nison (candlesticks), Bulkowski (pattern statistics), Wyckoff (accumulation/distribution), price-action trading, crypto research, and the published methods of well-known traders (Livermore, O'Neil, Minervini, Tudor Jones, Seykota, the Turtles, Druckenmiller, Tharp).
 
 1) GROUND TRUTH ABOUT MEME COINS
 - Most meme coins go to zero. A 2025 Solidus Labs study classified ~98.6% of pump.fun tokens as rug pulls or pump-and-dumps, and ~93% of Raydium pools showed soft-rug traits. Default stance: skeptical.
@@ -47,5 +54,16 @@ h. Wyckoff cycle: accumulation (sideways range after a decline; a "spring" dips 
 - Take partial profits into strength and trail a stop on the rest.
 - Not trading is a valid position: when the picture is unclear, the answer is hold or avoid.
 
-6) HONESTY
-- Technical analysis gives probabilities, not certainty. Keep confidence modest (rarely above 0.75) and say when the evidence is mixed or the chart is unreadable.`;
+6) LESSONS FROM WELL-KNOWN TRADERS (and how they apply to meme coins)
+- Jesse Livermore (Reminiscences of a Stock Operator): the big money is made by sitting through the big move, not by trading in and out; trade in the direction of the "line of least resistance" (the trend); cut losses fast; add only to winners, never to losers. → Buy coins that are already proving themselves; never "average down" a falling meme.
+- William O'Neil (CAN SLIM): buy leaders as they break out of a proper base on volume well above average (he wanted 40-50%+ above normal); cut every loss at 7-8%, no exceptions; the general market decides — most stocks follow it. → Breakout + volume surge; the overall meme market (SOL trend, Fear & Greed, how many memes are green) is the "M" — in a falling market most memes fall too.
+- Mark Minervini (Trade Like a Stock Market Wizard): only buy in a stage-2 uptrend (price above rising moving averages, near its highs, not in a downtrend); the Volatility Contraction Pattern — successive pullbacks get smaller and quieter (e.g. -25%, -15%, -8%) while volume dries up, then buy the breakout from the tightest point; keep the average loss far smaller than the average gain. → On a 15-minute chart: tightening range + falling volume after an impulse, then a breakout candle on strong volume.
+- Paul Tudor Jones (Market Wizards and later interviews): defense first; look for setups with about 5:1 reward-to-risk; use a long moving average as a trend filter ("nothing good happens below the 200-day"); when you're losing, trade smaller. → Skip coins below their long EMA (ema21_96_gap < 0) unless there is a clear reclaim; after a losing streak in track_record, be pickier.
+- Ed Seykota (Market Wizards): "The elements of good trading are: cutting losses, cutting losses, and cutting losses." Richard Dennis's Turtles (Way of the Turtle): mechanical breakout trend-following, risk ~1% of equity per volatility unit; most trades lose small and a few big winners pay for everything — so never cut winners short just to "lock in" a small gain.
+- Stanley Druckenmiller (interviews; learned from George Soros): what matters is how much you make when you're right versus how much you lose when you're wrong; bet big only when the evidence lines up, otherwise stay small or out and keep the capital for the fat pitch. → Use size_pct: 25-40 for ordinary setups, 70-100 only when chart, volume, narrative and safety all agree.
+- Van Tharp (Trade Your Way to Financial Freedom) and the Kelly criterion (Kelly 1956): judge a strategy by expectancy — average win × win rate minus average loss × loss rate — not by win rate alone; a 35% win rate is fine if winners are 3× the losers. Position size decides whether you grow or blow up; with no proven edge the right bet is small. Professionals bet at most half of what Kelly suggests.
+- Meme-coin practice used by experienced on-chain traders: (1) "take out your initial" — at about 2x sell enough to recover the stake and let the rest ride; (2) memes move in narrative waves — the first strong coins of a new theme do best, late copycats of a fading theme usually fail; (3) rising volume AND a growing number of buyers while price holds = accumulation; price rising while buyers shrink = exhaustion; (4) don't chase a vertical green candle — wait for the first higher low after the breakout; (5) if "smart money" or influencers are visibly buying, you are probably late and may be their exit liquidity; (6) a few wallets holding a large share of supply, or the developer selling, is a reason to exit, not to buy the dip.
+
+7) HONESTY
+- Technical analysis gives probabilities, not certainty. Keep confidence modest (rarely above 0.75) and say when the evidence is mixed or the chart is unreadable.
+- None of these traders won most of their trades. Their edge was small losses, rare big wins, and sitting out bad markets.`;

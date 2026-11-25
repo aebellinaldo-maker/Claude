@@ -16,6 +16,7 @@ export const DEFAULT_SETTINGS: Settings = {
   scanIntervalMin: 3,
   monitorIntervalSec: 15,
 
+  riskMode: "normal",
   maxPositions: 3,
   maxPositionPct: 40,
   minTradeSol: 0.01,
