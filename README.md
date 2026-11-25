@@ -183,12 +183,12 @@ On the Bot tab you choose how the bot trades:
 - **🛡️ Normal** — the settings above: up to 3 coins, sells half at +40 %, stop-loss −15 %.
 - **🚀 Moonshot** — fewer, bigger bets that may run: up to 2 coins with up to 60 % of the money each, stop-loss −30 %, sells 35 % at +200 % (that is already more than the stake) and lets the rest ride with a trailing stop 45 % below the peak, for up to 72 h. The daily loss limit and the kill switch stay on.
 
-The Moonshot values come from `npm run backtest:exits` (in `bot/`), which replays the bot's real exit rules candle by candle on stored charts. They were chosen on the earlier ~60 % of the days only, then checked on the last 9 days, which they never saw (56 coins, 276 momentum entries, 1 % fees):
+The Moonshot values come from `npm run backtest:exits` (in `bot/`), which replays the bot's real exit rules candle by candle on stored charts. They were chosen on the earlier ~60 % of the days only, then checked on the last 10 days, which they never saw (65 coins, 335 momentum entries, 1 % fees). The same values won again after the chart archive grew from 79 to 106 coins:
 
 | | Avg per trade | Trades that doubled | €10 → €100 within 60 trades | Dropped to half within 60 trades |
 |---|---|---|---|---|
-| Normal | −3.7 % | 0 % | 0 % | 57 % |
-| Moonshot | −6.1 % | 5.4 % | 0.6 % | 98 % |
+| Normal | −3.7 % | 0 % | 0 % | 55 % |
+| Moonshot | −3.9 % | 6.3 % | 1.5 % | 96 % |
 
 In plain words: no setting reliably turns €10 into €100. Moonshot trades many small results for rare big wins and bigger losses — closer to a lottery ticket than an edge. (These buys use a simple momentum rule, not the AI; the AI's real results show up in the track record.) The app shows these numbers next to the switch.
 
@@ -222,6 +222,8 @@ How it works:
 **First result (honest):** trained here on 32 coins / 26 days, the model *looked* great at first (picks winning 40 %, +5.8 % per trade) — until the checks above exposed survivorship bias through "coin age". Corrected and tested on unseen coins it was **not distinguishable from luck** (+0.4 % per trade, t = 0.08), so the bot does not trade on it yet. What *was* statistically clear: buying trending meme coins at random loses about 1.4 % per trade (t = −2.6) — which is why the filters and stop-losses matter more than any prediction. On your server it keeps collecting charts and retests itself every week.
 
 **Bigger test (79 coins, ~30 days, 22,000+ chart moments, 18 take-profit/stop-loss/hold strategies, `npm run ml:optimize`):** buying every trending meme coin lost 1.2–3.5 % per trade after fees in *every* strategy. The own model lost less than random in most of them (e.g. −0.3 % vs −1.5 % per trade) but none was profitable on unseen coins and days. The model shipped with the bot (`bot/ml/pretrained-model.json`) is therefore marked "not proven": its estimates are shown in the app and given to the AI brains as a second opinion, but the bot does not trade on it alone.
+
+**Re-test with more data (106 coins collected, 63 with enough history, ~35 days, 25,000+ chart moments):** same picture. With the bot's own exits (+40 % / −15 % / 24 h) the model's picks lost 1.9 % per trade on unseen coins and days, buying everything lost 2.8 %. Over all 18 strategies the model beat "buy everything" in most, but none was profitable after fees. The shipped model is now this one (more data, same hold time as the bot) and is still marked "not proven".
 
 Be realistic: a model like this finds small statistical edges at best. Meme coins are driven by hype that charts don't show, and patterns that worked last month can stop working. That's why it's tested on unseen data every week and the safety rules always apply. Train it from the command line with `npm run ml:train` (in `bot/`).
 

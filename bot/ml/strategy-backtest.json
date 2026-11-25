@@ -1,30 +1,30 @@
 {
-  "createdAt": 1795629455527,
-  "coins": 56,
-  "testDays": 9,
-  "trades": 276,
+  "createdAt": 1795629843546,
+  "coins": 65,
+  "testDays": 10,
+  "trades": 335,
   "normal": {
-    "trades": 276,
+    "trades": 335,
     "avgPct": -3.7,
-    "medianPct": -10.1,
-    "winRate": 0.312,
+    "medianPct": -9.9,
+    "winRate": 0.322,
     "doubled": 0,
     "fiveX": 0,
     "worstPct": -15.9,
     "bestPct": 53,
     "tenXChance": 0,
-    "halfChance": 0.56525
+    "halfChance": 0.55175
   },
   "moonshot": {
-    "trades": 276,
-    "avgPct": -6.1,
+    "trades": 335,
+    "avgPct": -3.9,
     "medianPct": -30.7,
-    "winRate": 0.246,
-    "doubled": 0.0543,
+    "winRate": 0.275,
+    "doubled": 0.0627,
     "fiveX": 0,
     "worstPct": -30.7,
     "bestPct": 270.6,
-    "tenXChance": 0.00575,
-    "halfChance": 0.9825
+    "tenXChance": 0.0145,
+    "halfChance": 0.961
   }
 }

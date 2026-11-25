@@ -8,8 +8,9 @@ import type { Settings } from "../types.js";
  *   already more than the stake — and let the rest ride with a wide trailing stop.
  * - A wide stop-loss, because meme coins often swing 20-30% before big moves.
  * Chosen by scripts/backtest-exits.ts on the earlier 60% of the charts only (best chance of a
- * ≥2x trade without a worse average). On the later days it never saw: ~5% of trades doubled
- * (normal: none), but the average trade was worse (≈ -6% vs -4%). A lottery ticket, not an edge.
+ * ≥2x trade without a worse average). On the later days it never saw (106-coin archive):
+ * ~6% of trades doubled (normal: none), the average trade about the same (≈ -3.9% vs -3.7%),
+ * but far more runs lost half the money. A lottery ticket, not an edge.
  */
 export const MOONSHOT = {
   stopLossPct: 30,
