@@ -20,7 +20,8 @@
     "ml:collect": "tsx scripts/ml-collect.ts",
     "ml:optimize": "tsx scripts/ml-optimize.ts",
     "ml:refresh": "tsx scripts/ml-refresh.ts",
-    "backtest:exits": "tsx scripts/backtest-exits.ts"
+    "backtest:exits": "tsx scripts/backtest-exits.ts",
+    "backtest:squad": "tsx scripts/backtest-squad.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0",

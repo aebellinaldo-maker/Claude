@@ -143,11 +143,17 @@ What the data means:
 - briefing: a recent research summary of the crypto/meme market and narratives (may be missing). Coins that fit the narratives currently getting attention have better odds.
 - recent_trades: the bot's own latest buys and sells.
 - track_record: the bot's closed trades — why each was bought (why_bought), how it ended (result_pct, exit) — plus win rate, average win vs. average loss and profit factor (euros won ÷ euros lost; below 1 = losing money). This is your trading journal. Before buying, look for patterns: which kinds of setups won, which lost (e.g. buying after a big 24h pump, low liquidity, weak volume, a fading narrative)? Don't repeat setups that keep losing; favour the kinds that worked. Don't re-buy a coin that just stopped out unless the picture clearly changed. With fewer than ~30 closed trades the numbers are mostly luck — use them as hints, not proof.
-- strategy: the exit rules code will apply to a coin bought now. risk_mode "normal": steady trades, take-profit at take_profit_pct. risk_mode "moonshot": the owner chose fewer, bigger bets that are allowed to run — take_profit_sell_pct % is sold at take_profit_pct (getting the stake back), the rest rides with a wide trailing stop. In moonshot mode prefer coins with room for a multi-x move (early in a fresh trend or narrative, market cap still small relative to the attention it gets, strong buyer growth) over slow, safe-looking ones, and buy fewer coins with more conviction; never relax the rug-pull caution.
+- The bot runs a squad of four strategies side by side. Every candidate comes with strategy_signal: which strategy wants it, how strongly (0-1, from code) and why. Judge each coin by the rules of ITS strategy:
+  * sniper — young coins (15 min-12 h old) that survived launch; holders, mint/freeze authority and liquidity were checked by code. Most launches still fail: demand strong, broad buying (many buyers, rising volume vs. liquidity), spread-out holders, a believable narrative; avoid if the chart is one vertical candle. Small size.
+  * momentum — established coins breaking out: rising price AND volume, more buyers than sellers, not overextended (RSI < 80, few upper wicks).
+  * dip — a coin in an uptrend that pulled back 12-40% from its 24h high, RSI cooled, first green candle. Good when the trend and narrative are still alive; bad when the pullback is distribution (lower highs on heavy selling) or a rug starting.
+  * whale — big wallets are buying in the last hour (whales_last_hour), before the price has run. smart_wallets are wallets whose earlier big buys mostly went up; that is the strongest evidence. Be careful if big sells are close to big buys.
+- squad: per strategy — enabled, free_slots, exits (the stop-loss / take-profit code applies to that strategy), money_weight (above 1 = it has been winning and gets more money) and its own closed-trade record. Favour strategies that are working right now; be pickier with ones that keep losing.
+- strategy: the risk mode and default exit rules. risk_mode "normal": steady trades, take-profit at take_profit_pct. risk_mode "moonshot": the owner chose fewer, bigger bets that are allowed to run — take_profit_sell_pct % is sold at take_profit_pct (getting the stake back), the rest rides with a wide trailing stop. In moonshot mode prefer coins with room for a multi-x move (early in a fresh trend or narrative, market cap still small relative to the attention it gets, strong buyer growth) over slow, safe-looking ones, and buy fewer coins with more conviction; never relax the rug-pull caution.
 
 Rules for your answer:
-- Buy at most as many coins as there are free slots. Buying nothing is often correct, especially in a weak market (SOL falling, most memes red).
-- Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit (strategy.take_profit_pct) before its stop-loss (strategy.stop_loss_pct).
+- Buy at most as many coins as there are free slots (overall, and per strategy in squad.free_slots). Buying nothing is often correct, especially in a weak market (SOL falling, most memes red).
+- Only use action "buy" when you have real conviction; confidence is your honest probability-like estimate (0-1) that the trade reaches its take-profit before its stop-loss (see squad.<strategy>.exits).
 - Every candidate you were given must appear in "buys" (as buy or skip); every open position must appear in "exits" (hold or sell). Copy each "mint" exactly.
 - Keep each reason to one or two short sentences that a non-expert can understand.
 
@@ -178,13 +184,15 @@ const DecisionSchema = z.object({
 
 export interface DecisionInput {
   candidates: Candidate[];
-  positions: { mint: string; symbol: string; pnlPct: number; heldHours: number; valueEur: number; boughtBecause: string }[];
+  positions: { mint: string; symbol: string; strategy?: string; pnlPct: number; heldHours: number; valueEur: number; boughtBecause: string }[];
   freeSlots: number;
   cashEur: number;
   equityEur: number;
   dailyPnlPct: number;
   solChange24hPct?: number;
-  recentTrades: { symbol: string; side: string; trigger: string; pnlPct?: number; hoursAgo: number }[];
+  recentTrades: { symbol: string; side: string; trigger: string; strategy?: string; pnlPct?: number; hoursAgo: number }[];
+  /** Per strategy: on/off, free slots, exit rules, money weight and its own record. */
+  squad?: Record<string, unknown>;
   /** Risk mode and the exit rules code will apply to anything bought now. */
   strategy?: Record<string, string | number>;
   /** The bot's closed trades with the reason it bought each one and how it ended. */
@@ -210,6 +218,28 @@ function compactCandidate(c: Candidate) {
     socials: c.socials,
     safety: c.safety ? { level: c.safety.level, rug_score: c.safety.rugScore ?? null, risks: c.safety.risks.map((x) => `${x.level}: ${x.name}`) } : null,
     rule_score: c.score ?? null,
+    strategy_signal: c.signal ? { strategy: c.signal.strategy, strength: c.signal.strength, why: c.signal.notes } : null,
+    whales_last_hour: c.whales
+      ? {
+          big_trade_from_usd: c.whales.thresholdUsd,
+          big_buys: c.whales.bigBuys,
+          big_sells: c.whales.bigSells,
+          buy_usd: c.whales.buyUsd,
+          sell_usd: c.whales.sellUsd,
+          distinct_whales: c.whales.whales,
+          smart_wallets: c.whales.smartWallets,
+        }
+      : null,
+    holders: c.holders
+      ? {
+          count: c.holders.holders ?? null,
+          top10_pct: c.holders.top10Pct ?? null,
+          largest_pct: c.holders.maxHolderPct ?? null,
+          creator_pct: c.holders.creatorPct ?? null,
+          insider_wallets: c.holders.insiders ?? null,
+          launchpad: c.holders.launchpad ?? null,
+        }
+      : null,
     chart_24h: c.chart ?? null,
     own_model_win_probability: c.mlProb !== undefined ? Math.round(c.mlProb * 1000) / 1000 : null,
   };
@@ -255,6 +285,7 @@ export async function aiDecide(input: DecisionInput, s: Settings): Promise<Decis
     own_model: ownModelInfo(),
     briefing: state.briefing ? { written_hours_ago: Math.round((Date.now() - state.briefing.ts) / 3_600_000), text: state.briefing.text } : null,
     strategy: input.strategy ?? null,
+    squad: input.squad ?? null,
     track_record: input.trackRecord ?? null,
     recent_trades: input.recentTrades,
     candidates: input.candidates.slice(0, maxCandidates).map(compactCandidate),

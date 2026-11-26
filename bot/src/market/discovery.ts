@@ -71,7 +71,7 @@ export function pairToCandidate(p: DexPair, meta?: Partial<SourceInfo>): Candida
  * Collects trending / hyped / well-known coins from several free sources and
  * returns market data for each (one most-liquid pair per coin).
  */
-export async function discoverCandidates(): Promise<Candidate[]> {
+export async function discoverCandidates(extra: { mint: string; source: string }[] = []): Promise<Candidate[]> {
   const info = new Map<string, SourceInfo>();
   const add = (mint: string, source: string, boost = 0, rank?: number) => {
     if (!mint || EXCLUDE.has(mint)) return;
@@ -95,6 +95,7 @@ export async function discoverCandidates(): Promise<Candidate[]> {
   if (profiles.status === "fulfilled") profiles.value.forEach((p) => add(p.tokenAddress, "new_profile"));
   if (trending.status === "fulfilled") trending.value.forEach((m, i) => add(m, "trending", 0, i + 1));
   for (const mint of Object.keys(WATCHLIST)) add(mint, "watchlist");
+  for (const e of extra) add(e.mint, e.source);
 
   const pairs = await getBestPairs([...info.keys()]);
   const out: Candidate[] = [];

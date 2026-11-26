@@ -1,0 +1,33 @@
+{
+  "createdAt": 1795686230608,
+  "coins": 65,
+  "testDays": 10,
+  "dipExits": {
+    "stopLossPct": 20,
+    "takeProfitPct": 60,
+    "takeProfitSellPct": 50,
+    "trailingStopPct": 15,
+    "maxHoldHours": 12
+  },
+  "dip": {
+    "trades": 202,
+    "avgPct": -0.8,
+    "medianPct": -2.7,
+    "winRate": 0.446,
+    "bestPct": 61.9
+  },
+  "momentum": {
+    "trades": 318,
+    "avgPct": -4.5,
+    "medianPct": -10,
+    "winRate": 0.274,
+    "bestPct": 51.6
+  },
+  "baseline": {
+    "trades": 2624,
+    "avgPct": -2.9,
+    "medianPct": -3,
+    "winRate": 0.283,
+    "bestPct": 133.1
+  }
+}

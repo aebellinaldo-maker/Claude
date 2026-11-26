@@ -12,6 +12,8 @@ import { OwnModelCard } from "../../components/own-model-card";
 import { BudgetCard } from "../../components/budget-card";
 import { StrategyCard } from "../../components/strategy-card";
 import { StatsCard } from "../../components/stats-card";
+import { RunCard } from "../../components/run-card";
+import { SquadCard } from "../../components/squad-card";
 
 export default function BotScreen() {
   const { t, lang, api, hasServer } = useApp();
@@ -91,31 +93,35 @@ export default function BotScreen() {
         />
       </Row>
 
-      <Card>
-        <T dim>{t("botValue")}</T>
-        <Big>{eur(s.equity.totalEur, lang)}</Big>
-        <Row gap={16}>
-          <T small dim>
-            {t("today")}{" "}
-            <T small bold color={pnlColor(s.pnl.dailyPct)}>
-              {pct(s.pnl.dailyPct)}
+      {s.session ? (
+        <RunCard status={s} />
+      ) : (
+        <Card>
+          <T dim>{t("botValue")}</T>
+          <Big>{eur(s.equity.totalEur, lang)}</Big>
+          <Row gap={16}>
+            <T small dim>
+              {t("today")}{" "}
+              <T small bold color={pnlColor(s.pnl.dailyPct)}>
+                {pct(s.pnl.dailyPct)}
+              </T>
             </T>
-          </T>
-          <T small dim>
-            {t("total")}{" "}
-            <T small bold color={pnlColor(s.pnl.totalPct)}>
-              {pct(s.pnl.totalPct)} ({s.pnl.totalEur >= 0 ? "+" : ""}
-              {eur(s.pnl.totalEur, lang)})
+            <T small dim>
+              {t("total")}{" "}
+              <T small bold color={pnlColor(s.pnl.totalPct)}>
+                {pct(s.pnl.totalPct)} ({s.pnl.totalEur >= 0 ? "+" : ""}
+                {eur(s.pnl.totalEur, lang)})
+              </T>
             </T>
+          </Row>
+          <View style={{ marginHorizontal: -4, marginTop: 6 }}>
+            <Sparkline values={points} width={width - 64} color={points.length > 1 && points[points.length - 1] < points[0] ? colors.red : colors.green} />
+          </View>
+          <T small faint>
+            {t("cash")} {eur(s.equity.cashEur, lang)} · {t("coins")} {eur(s.equity.positionsEur, lang)}
           </T>
-        </Row>
-        <View style={{ marginHorizontal: -4, marginTop: 6 }}>
-          <Sparkline values={points} width={width - 64} color={points.length > 1 && points[points.length - 1] < points[0] ? colors.red : colors.green} />
-        </View>
-        <T small faint>
-          {t("cash")} {eur(s.equity.cashEur, lang)} · {t("coins")} {eur(s.equity.positionsEur, lang)}
-        </T>
-      </Card>
+        </Card>
+      )}
 
       {s.killSwitch.tripped ? <Note kind="error">{s.killSwitch.reason}</Note> : null}
       {s.pnl.noNewBuys && s.pnl.breakerReason && !s.killSwitch.tripped ? <Note kind="warn">{s.pnl.breakerReason}</Note> : null}
@@ -169,6 +175,9 @@ export default function BotScreen() {
 
       <H>{t("budgetTitle")}</H>
       <BudgetCard mode={s.mode} running={s.running} onChanged={() => void status.reload()} />
+
+      <H>🧩 {t("squadTitle")}</H>
+      <SquadCard status={s} onChanged={() => void status.reload()} />
 
       <H>🎯 {t("strategyTitle")}</H>
       <StrategyCard status={s} onChanged={() => void status.reload()} />

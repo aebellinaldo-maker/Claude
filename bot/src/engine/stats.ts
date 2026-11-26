@@ -3,7 +3,7 @@
  * computes the numbers that tell skill from luck — win rate, average win vs. average loss,
  * profit factor. Shown in the app, and given to the AI so it learns from its own results.
  */
-import type { Mode, Trade, TradeTrigger } from "../types.js";
+import type { Mode, StrategyId, Trade, TradeTrigger } from "../types.js";
 
 export interface RoundTrip {
   mint: string;
@@ -17,6 +17,8 @@ export interface RoundTrip {
   exitTriggers: TradeTrigger[];
   /** Why it was bought (the buy reason). */
   why: string;
+  strategy: StrategyId;
+  imageUrl?: string;
 }
 
 export type Verdict = "too_early" | "good" | "breakeven" | "losing";
@@ -61,6 +63,8 @@ export function roundTrips(trades: Trade[], mode: Mode, heldMints: Set<string>):
       entryTrigger: o.buy.trigger,
       exitTriggers: [...new Set(o.sells.map((t) => t.trigger))],
       why: o.buy.reason,
+      strategy: o.buy.strategy ?? "momentum",
+      imageUrl: o.buy.imageUrl,
     });
   };
   for (const t of [...trades].filter((x) => x.mode === mode).sort((a, b) => a.ts - b.ts)) {

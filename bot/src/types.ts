@@ -1,4 +1,14 @@
 export type Mode = "paper" | "real";
+
+/**
+ * The four trading strategies ("the squad"). Each has its own way of finding coins,
+ * its own entry signal and its own exit rules; they trade side by side.
+ * - sniper:   young coins (15 min – 12 h old) that survived launch, with clean holders
+ * - momentum: breakouts of established coins on rising volume
+ * - dip:      pullbacks inside an uptrend, bought on the first bounce
+ * - whale:    coins that large wallets (and wallets with a good record) are buying right now
+ */
+export type StrategyId = "sniper" | "momentum" | "dip" | "whale";
 export type Lang = "en" | "de";
 
 export interface Settings {
@@ -27,6 +37,8 @@ export interface Settings {
    * to run (see risk/profiles.ts) — more chance of a big win AND of a big loss.
    */
   riskMode: "normal" | "moonshot";
+  /** Which strategies may open new trades. */
+  strategies: Record<StrategyId, boolean>;
 
   // --- position sizing ---
   maxPositions: number;
@@ -94,6 +106,8 @@ export interface Position {
   imageUrl?: string;
   /** DEX pool address (used to keep archiving the chart while the coin is held). */
   pool?: string;
+  /** Strategy that opened the position (decides its exit rules). Old positions: momentum. */
+  strategy?: StrategyId;
 }
 
 export type TradeTrigger =
@@ -127,6 +141,8 @@ export interface Trade {
   pnlEur?: number;
   pnlPct?: number;
   signature?: string;
+  strategy?: StrategyId;
+  imageUrl?: string;
 }
 
 export interface EquityPoint {
@@ -181,8 +197,67 @@ export interface Candidate {
   chart?: Record<string, number | string>;
   /** Own model: probability of hitting take-profit before stop-loss. */
   mlProb?: number;
+  /** Large-wallet activity in the last hour (Whale Tail). */
+  whales?: WhaleInfo;
+  /** Holder distribution and token authorities (deep check for young coins). */
+  holders?: HolderInfo;
+  /** The strategy that wants this coin, how strongly, and why. */
+  signal?: StrategySignal;
   score?: number;
   scoreBreakdown?: Record<string, number>;
+}
+
+export interface StrategySignal {
+  strategy: StrategyId;
+  /** 0 … 1 */
+  strength: number;
+  notes: string[];
+}
+
+export interface WhaleInfo {
+  windowMin: number;
+  /** A trade counts as "big" from this size (USD). */
+  thresholdUsd: number;
+  bigBuys: number;
+  bigSells: number;
+  buyUsd: number;
+  sellUsd: number;
+  /** Distinct wallets with big buys. */
+  whales: number;
+  /** Of those, wallets whose earlier big buys mostly went up (learned by the bot). */
+  smartWallets: number;
+  wallets: string[];
+  checkedAt: number;
+}
+
+export interface HolderInfo {
+  holders?: number;
+  /** Share of supply held by the 10 largest real holders (pools and lockers excluded), %. */
+  top10Pct?: number;
+  maxHolderPct?: number;
+  insiders?: number;
+  creatorPct?: number;
+  mintRevoked: boolean;
+  freezeRevoked: boolean;
+  lpLockedPct?: number;
+  launchpad?: string;
+  rugged?: boolean;
+}
+
+/** One bot run, from Start to Stop. */
+export interface RunSession {
+  id: string;
+  mode: Mode;
+  startedAt: number;
+  startEquityEur: number;
+  endedAt?: number;
+  endEquityEur?: number;
+}
+
+/** What the bot learned about big wallets: did their big buys go up afterwards? */
+export interface WhaleBook {
+  pending: { wallet: string; mint: string; priceUsd: number; ts: number }[];
+  wallets: Record<string, { n: number; wins: number; sumRet: number; last: number }>;
 }
 
 export interface SafetyReport {
@@ -230,4 +305,8 @@ export interface BotState {
   events: BotEvent[];
   settings: Settings;
   ownerWallet?: string;
+  /** The current (or last) run, and earlier ones. */
+  session?: RunSession;
+  sessions: RunSession[];
+  whaleBook: WhaleBook;
 }

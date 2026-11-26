@@ -40,6 +40,9 @@ import { listArchives, loadArchive, toGrid } from "../ml/candles.js";
 import { analyzeChart } from "../ml/brain.js";
 import { canSelfRestart, describeKeys, EDITABLE_KEYS, updateEnvFile } from "../util/envfile.js";
 import { log } from "../util/log.js";
+import { sessionSummary } from "../engine/session.js";
+import { exitProfile, squadBacktest, standings, STRATEGY_IDS } from "../strategies/squad.js";
+import type { RunSession } from "../types.js";
 
 class UserError extends Error {}
 
@@ -87,6 +90,9 @@ app.get("/api/bot/status", async (c) => {
     mode: state.mode,
     riskMode: s.riskMode,
     strategies: strategies(s),
+    squad: squadStatus(),
+    squadBacktest: squadBacktest(),
+    session: state.session ? runSummary(state.session, eq.totalEur) : null,
     stats: tradeStats(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)), 5),
     killSwitch: state.killSwitch,
     lastScanAt: state.lastScanAt ?? null,
@@ -202,6 +208,54 @@ app.post("/api/bot/sell", async (c) => {
   return c.json({ ok: true });
 });
 
+function runSummary(sess: RunSession, valueNowEur: number) {
+  const positions = sess.mode === state.mode ? portfolio().positions.map((pos) => ({ pos, valueEur: positionValueEur(pos) })) : [];
+  return sessionSummary(sess, state.trades, state.equity, positions, valueNowEur);
+}
+
+/** Each strategy: on/off, benched, money weight, exits and its own record (current mode). */
+function squadStatus() {
+  const s = state.settings;
+  const st = standings(state.trades, state.mode, new Set(portfolio().positions.map((x) => x.mint)));
+  return Object.fromEntries(
+    STRATEGY_IDS.map((id) => [
+      id,
+      {
+        enabled: s.strategies[id],
+        benched: st[id].benched,
+        weight: st[id].weight,
+        exits: exitProfile(s, id),
+        closed: st[id].stats.closed,
+        winRate: st[id].stats.winRate,
+        profitFactor: st[id].stats.profitFactor,
+        realizedEur: st[id].stats.realizedEur,
+      },
+    ]),
+  );
+}
+
+/** The current run (or a past one by id), with the full summary. */
+app.get("/api/session", async (c) => {
+  const id = c.req.query("id");
+  const sess = id ? (state.sessions.find((x) => x.id === id) ?? (state.session?.id === id ? state.session : undefined)) : state.session;
+  if (!sess) return c.json({ session: null });
+  const eq = bot.lastEquity ?? (await bot.computeEquity());
+  return c.json({ session: runSummary(sess, eq.totalEur) });
+});
+
+app.get("/api/sessions", (c) =>
+  c.json({
+    sessions: [...state.sessions].reverse().map((x) => ({
+      id: x.id,
+      mode: x.mode,
+      startedAt: x.startedAt,
+      endedAt: x.endedAt ?? null,
+      startEur: x.startEquityEur,
+      endEur: x.endEquityEur ?? null,
+    })),
+  }),
+);
+
 app.get("/api/bot/trades", (c) => {
   const limit = Math.min(500, Number(c.req.query("limit") ?? 100));
   const mode = c.req.query("mode") ?? state.mode;
@@ -243,6 +297,7 @@ const SettingsPatch = z
     stopAt: z.number().min(0),
     closeOnStop: z.boolean(),
     riskMode: z.enum(["normal", "moonshot"]),
+    strategies: z.object({ sniper: z.boolean(), momentum: z.boolean(), dip: z.boolean(), whale: z.boolean() }).partial(),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),
     maxPositions: z.number().int().min(1).max(10),
@@ -289,7 +344,9 @@ app.get("/api/settings", (c) =>
 
 app.put("/api/settings", async (c) => {
   const patch = SettingsPatch.parse(await c.req.json());
-  Object.assign(state.settings, patch);
+  const { strategies: sp, ...rest } = patch;
+  Object.assign(state.settings, rest);
+  if (sp) state.settings.strategies = { ...state.settings.strategies, ...sp };
   save(true);
   return c.json({ settings: state.settings });
 });

@@ -17,7 +17,8 @@ export const DEFAULT_SETTINGS: Settings = {
   monitorIntervalSec: 15,
 
   riskMode: "normal",
-  maxPositions: 3,
+  strategies: { sniper: true, momentum: true, dip: true, whale: true },
+  maxPositions: 4,
   maxPositionPct: 40,
   minTradeSol: 0.01,
   feeReserveSol: 0.012,
@@ -81,6 +82,8 @@ function freshState(): BotState {
     equity: [],
     events: [],
     settings: { ...DEFAULT_SETTINGS },
+    sessions: [],
+    whaleBook: { pending: [], wallets: {} },
   };
 }
 
@@ -95,7 +98,13 @@ function load(): BotState {
       return {
         ...base,
         ...raw,
-        settings: { ...DEFAULT_SETTINGS, ...(raw.settings ?? {}) },
+        settings: {
+          ...DEFAULT_SETTINGS,
+          ...(raw.settings ?? {}),
+          strategies: { ...DEFAULT_SETTINGS.strategies, ...(raw.settings?.strategies ?? {}) },
+        },
+        sessions: raw.sessions ?? [],
+        whaleBook: { ...base.whaleBook, ...(raw.whaleBook ?? {}) },
         paper: { ...base.paper, ...(raw.paper ?? {}) },
         real: { ...base.real, ...(raw.real ?? {}) },
       };
@@ -136,6 +145,14 @@ function trimHistory() {
   if (state.trades.length > 1000) state.trades = state.trades.slice(-1000);
   if (state.equity.length > 4000) state.equity = state.equity.slice(-4000);
   if (state.events.length > 300) state.events = state.events.slice(-300);
+  if (state.sessions.length > 30) state.sessions = state.sessions.slice(-30);
+  const wb = state.whaleBook;
+  if (wb.pending.length > 3000) wb.pending = wb.pending.slice(-3000);
+  const wallets = Object.entries(wb.wallets);
+  if (wallets.length > 6000) {
+    wallets.sort((a, b) => b[1].last - a[1].last);
+    wb.wallets = Object.fromEntries(wallets.slice(0, 5000));
+  }
   const now = Date.now();
   for (const [mint, until] of Object.entries(state.cooldowns)) if (until < now) delete state.cooldowns[mint];
 }

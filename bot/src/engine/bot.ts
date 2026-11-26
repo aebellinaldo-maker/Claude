@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { addEvent, portfolio, save, state, today } from "../store.js";
-import type { Candidate, Mode, PortfolioState, Position, Trade, TradeTrigger } from "../types.js";
+import type { Candidate, Mode, PortfolioState, Position, StrategyId, Trade, TradeTrigger } from "../types.js";
 import { discoverCandidates, WATCHLIST } from "../market/discovery.js";
 import { getPrices, SOL_MINT } from "../market/jupiter.js";
 import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
@@ -8,6 +8,22 @@ import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
 import { autoStopReason, breakers, buySizeSol, exitSignal, tradeable } from "../risk/rules.js";
 import { effectiveSettings } from "../risk/profiles.js";
+import {
+  bestSignal,
+  dipCandidate,
+  exitProfile,
+  exitSettings,
+  FAST_LANE_STRENGTH,
+  sniperFilter,
+  sniperSignal,
+  SNIPER_MAX_AGE_H,
+  standings,
+  STRATEGIES,
+  STRATEGY_IDS,
+} from "../strategies/squad.js";
+import { getLaunchMints } from "../market/launches.js";
+import { getHolderInfo } from "../market/rugcheck.js";
+import { getWhaleInfo, gradeWhaleBuys, isSmartWallet, mintsToGrade } from "../market/whales.js";
 import { tradeStats } from "./stats.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
@@ -22,6 +38,8 @@ import { log, errMsg } from "../util/log.js";
 import { L } from "../util/i18n.js";
 
 const l = (en: string, de: string) => L(state.settings.language, en, de);
+
+const STRATEGY_LABEL: Record<StrategyId, string> = { sniper: "Sniper", momentum: "Momentum", dip: "Dip Hunter", whale: "Whale Tail" };
 
 const paperExec = new PaperExecutor();
 const liveExec = new LiveExecutor();
@@ -65,6 +83,9 @@ class Bot {
   private trading = new Set<string>();
   private lastBriefingTry = 0;
   private warnedUnproven = false;
+  /** Signals the AI has already judged (mint:strategy → time), so it's only asked about new ones. */
+  private aiSeen = new Map<string, number>();
+  private lastWhaleGrade = 0;
   /** Last computed equity, used by the API without hitting the RPC on every request. */
   lastEquity?: Equity;
 
@@ -110,6 +131,7 @@ class Bot {
     }
     p.day = { date: today(), startEquityEur: eq.totalEur };
     state.running = true;
+    state.session = { id: crypto.randomUUID(), mode: state.mode, startedAt: Date.now(), startEquityEur: eq.totalEur };
     state.lastScanAt = 0; // scan right away
     addEvent(
       "info",
@@ -123,6 +145,7 @@ class Bot {
 
   stop(reason?: string) {
     state.running = false;
+    this.endSession();
     addEvent(
       "info",
       `${reason ?? l("Paused by owner", "Vom Besitzer pausiert")}. ${l(
@@ -286,7 +309,7 @@ class Bot {
         pos.lastPriceUsd = pr.usdPrice;
         if (typeof pr.liquidity === "number") pos.lastLiquidityUsd = pr.liquidity;
         pos.lastUpdate = Date.now();
-        const sig = exitSignal(pos, pr.usdPrice, pr.liquidity, Date.now(), s);
+        const sig = exitSignal(pos, pr.usdPrice, pr.liquidity, Date.now(), exitSettings(state.settings, pos.strategy));
         pos.peakPriceUsd = Math.max(pos.peakPriceUsd, pr.usdPrice);
         if (sig.action === "sell") await this.sell(pos, sig.pct, sig.trigger, sig.reason);
       }
@@ -308,6 +331,8 @@ class Bot {
         addEvent("error", l(`KILL SWITCH: ${b.reason}. Selling everything and stopping.`, `NOT-AUS: ${b.reason}. Alles wird verkauft, Bot stoppt.`));
         await this.sellAll("kill_switch", b.reason ?? l("Kill switch", "Not-Aus"));
         state.running = false;
+        await this.computeEquity().catch(() => undefined);
+        this.endSession();
       }
       // The owner's own stop conditions (profit target, loss limit, end time).
       // With a real-money budget, measure profit/loss against the budget, not the whole wallet.
@@ -320,6 +345,8 @@ class Bot {
         if (s.closeOnStop) {
           addEvent("info", l(`AUTO-STOP: ${stopReason}. Selling everything.`, `AUTO-STOPP: ${stopReason}. Alles wird verkauft.`));
           await this.sellAll("auto_stop", stopReason);
+          await this.computeEquity().catch(() => undefined);
+          this.endSession();
         } else {
           addEvent("info", l(`AUTO-STOP: ${stopReason}. No new buys; open coins stay protected.`, `AUTO-STOPP: ${stopReason}. Keine neuen Käufe; offene Coins bleiben geschützt.`));
         }
@@ -331,21 +358,32 @@ class Bot {
     if (p.day.date !== today()) p.day = { date: today(), startEquityEur: equityEur };
   }
 
-  /** Finds candidates, filters them, asks the AI (or rules), and buys. */
+  /** Finds coins for each strategy, checks them, lets the AI (or the rules) choose, and buys. */
   async scan() {
     const s = effectiveSettings(state.settings);
     const p = portfolio();
     const eq = await this.computeEquity();
     const b = breakers(p, eq.totalEur, s);
-
-    const raw = await discoverCandidates();
-    const held = new Set(p.positions.map((x) => x.mint));
     const now = Date.now();
-    let passed: Candidate[] = [];
+    const held = new Set(p.positions.map((x) => x.mint));
+    const stand = standings(state.trades, state.mode, held);
+    const enabled = new Set(STRATEGY_IDS.filter((id) => s.strategies[id] && !stand[id].benched));
+
+    await this.gradeWhales();
+
+    // 1) Discover: trending / boosted / watchlist coins, plus fresh launches for the Sniper.
+    const launches = enabled.has("sniper") ? await getLaunchMints() : [];
+    const raw = await discoverCandidates(launches);
+    const young: Candidate[] = [];
+    const standard: Candidate[] = [];
     let rejected = 0;
     for (const c of raw) {
-      if (held.has(c.mint)) continue;
-      if ((state.cooldowns[c.mint] ?? 0) > now) continue;
+      if (held.has(c.mint) || (state.cooldowns[c.mint] ?? 0) > now) continue;
+      if (c.ageHours > 0 && c.ageHours <= SNIPER_MAX_AGE_H && !(c.mint in WATCHLIST)) {
+        if (enabled.has("sniper") && !sniperFilter(c, s).length) young.push(c);
+        else rejected++;
+        continue;
+      }
       if (marketFilter(c, s).length) {
         rejected++;
         continue;
@@ -353,36 +391,81 @@ class Bot {
       const { score, breakdown } = scoreCandidate(c);
       c.score = score;
       c.scoreBreakdown = breakdown;
-      passed.push(c);
+      standard.push(c);
     }
-    passed.sort((a, b2) => (b2.score ?? 0) - (a.score ?? 0));
 
-    // Deep rug check only for the best few (free API, be polite).
+    // 2) Shortlist per strategy, then the deeper (slower) checks only for those.
+    standard.sort((a, b2) => (b2.score ?? 0) - (a.score ?? 0));
+    const pick = new Map<string, Candidate>();
+    for (const c of standard.slice(0, 8)) pick.set(c.mint, c);
+    if (enabled.has("dip")) for (const c of standard.filter(dipCandidate).slice(0, 4)) pick.set(c.mint, c);
+    if (enabled.has("whale")) for (const c of [...standard].sort((a, b2) => b2.volume.h1 - a.volume.h1).slice(0, 4)) pick.set(c.mint, c);
     const checked: Candidate[] = [];
-    for (const c of passed.slice(0, 12)) {
+    for (const c of [...pick.values()].slice(0, 14)) {
       c.safety = await rugCheck(c, s);
-      const rescored = scoreCandidate(c);
-      c.score = rescored.score;
-      c.scoreBreakdown = rescored.breakdown;
-      if (c.safety.ok) checked.push(c);
-      else rejected++;
+      if (!c.safety.ok) {
+        rejected++;
+        continue;
+      }
+      const re = scoreCandidate(c);
+      c.score = re.score;
+      c.scoreBreakdown = re.breakdown;
+      checked.push(c);
     }
-    checked.sort((a, b2) => (b2.score ?? 0) - (a.score ?? 0));
-    passed = checked.slice(0, 8);
-    state.lastCandidates = passed;
-    log.info(`Scan: ${raw.length} coins found, ${passed.length} passed safety, ${rejected} rejected`);
+    // Charts (Dip Hunter needs them; they also keep the own model's archive growing).
+    for (const c of checked) await analyzeChart(c);
+    if (enabled.has("whale")) {
+      for (const c of [...checked].sort((a, b2) => b2.volume.h1 - a.volume.h1).slice(0, 5)) {
+        c.whales = await getWhaleInfo(c.pairAddress, c.mint, c.liquidityUsd, state.whaleBook);
+      }
+    }
+    for (const c of checked) c.signal = bestSignal(c, s, enabled) ?? undefined;
 
-    // Chart analysis + own-model probability for the shortlist. This also keeps the chart
-    // archive growing, which is what the own model learns from.
-    for (const c of passed) await analyzeChart(c);
+    // Young coins: holder check (developer powers, concentrated supply), then the Sniper signal.
+    young.sort((a, b2) => b2.volume.h1 * (b2.txns.h1.buys / Math.max(1, b2.txns.h1.sells)) - a.volume.h1 * (a.txns.h1.buys / Math.max(1, a.txns.h1.sells)));
+    for (const c of young.slice(0, 6)) {
+      try {
+        c.holders = await getHolderInfo(c.mint);
+      } catch {
+        rejected++;
+        continue;
+      }
+      c.safety = await rugCheck(c, s);
+      const sig = c.safety.ok ? sniperSignal(c, s) : null;
+      if (!sig) {
+        rejected++;
+        continue;
+      }
+      c.signal = sig;
+      checked.push(c);
+    }
+
+    const final = checked.filter((c) => c.signal).sort((a, b2) => b2.signal!.strength - a.signal!.strength).slice(0, 10);
+    state.lastCandidates = final;
+    log.info(
+      `Scan: ${raw.length} coins (${launches.length} launches), ${final.length} with a strategy signal, ${rejected} rejected — ` +
+        final.map((c) => `${c.symbol}:${c.signal!.strategy}:${c.signal!.strength}`).join(" "),
+    );
     for (const pos of p.positions) {
       if (pos.pool) await updateArchive({ pool: pos.pool, mint: pos.mint, symbol: pos.symbol }, 1, false);
     }
 
-    const freeSlots = Math.max(0, s.maxPositions - p.positions.length);
+    // 3) Free slots: overall, and per strategy.
+    const openBy: Partial<Record<StrategyId, number>> = {};
+    for (const x of p.positions) openBy[x.strategy ?? "momentum"] = (openBy[x.strategy ?? "momentum"] ?? 0) + 1;
+    const freeTotal = Math.max(0, s.maxPositions - p.positions.length);
     const room = tradeable(eq, s, state.mode);
-    const canBuy = !b.noNewBuys && freeSlots > 0 && room.freeSol - s.feeReserveSol >= s.minTradeSol;
+    const canBuy = !b.noNewBuys && freeTotal > 0 && room.freeSol - s.feeReserveSol >= s.minTradeSol;
     if (b.noNewBuys && b.reason) addEvent("warn", b.reason);
+    const slotFor = (id: StrategyId) => enabled.has(id) && (openBy[id] ?? 0) < STRATEGIES[id].maxOpen;
+    const buyable = canBuy ? final.filter((c) => slotFor(c.signal!.strategy)) : [];
+    const tryBuy = async (c: Candidate, sizePct: number, trigger: TradeTrigger, reason: string) => {
+      const id = c.signal!.strategy;
+      if (!state.running || state.killSwitch.tripped || !slotFor(id) || portfolio().positions.length >= s.maxPositions) return;
+      await this.buy(c, sizePct, trigger, reason);
+      if (portfolio().positions.some((x) => x.mint === c.mint)) openBy[id] = (openBy[id] ?? 0) + 1;
+    };
+    const why = (c: Candidate) => `${STRATEGY_LABEL[c.signal!.strategy]}: ${c.signal!.notes.join(", ")}`;
 
     // Own trained model as the brain: buy what it rates above its tested threshold.
     const brain = resolveModel(s);
@@ -392,12 +475,7 @@ class Bot {
       // Real money: it must ALSO be confirmed on forward-recorded charts.
       const allowed = state.mode === "real" ? mm?.tradeReady : mm?.useful;
       if (allowed) {
-        if (canBuy) {
-          for (const pick of mlPicks(passed, freeSlots, s)) {
-            if (!state.running || state.killSwitch.tripped) break;
-            await this.buy(pick.c, pick.sizePct, "ml", pick.reason);
-          }
-        }
+        for (const pick of mlPicks(buyable, freeTotal, s)) await tryBuy(pick.c, pick.sizePct, "ml", `${why(pick.c)}. ${pick.reason}`);
         return;
       }
       if (!this.warnedUnproven) {
@@ -417,41 +495,57 @@ class Bot {
       }
     }
 
-    // The AI is consulted only when it can add value, to keep API costs small:
-    // a promising coin and a free slot, or an hourly review of open positions.
+    // 4) The AI decides when there is something new to decide (a fresh signal) or a review is due,
+    //    at most every few minutes; in between, only very strong signals are bought by the rules.
+    for (const [k, ts] of this.aiSeen) if (now - ts > 2 * 3_600_000) this.aiSeen.delete(k);
     const aiReady = s.aiEnabled && brain?.provider !== "ml" && aiCanSpend(s);
     if (aiReady) {
       const sinceAi = now - (state.lastAiAt ?? 0);
-      const promising = canBuy && passed.some((c) => (c.score ?? 0) >= 0.45);
+      const fresh = buyable.filter((c) => c.signal!.strength >= 0.5 && !this.aiSeen.has(`${c.mint}:${c.signal!.strategy}`));
       const reviewDue = p.positions.length > 0 && sinceAi >= 60 * 60_000;
-      if (sinceAi < s.aiIntervalMin * 60_000 || !(promising || reviewDue)) return;
+      const minGap = Math.max(3, s.aiIntervalMin / 4) * 60_000;
+      const due = (fresh.length > 0 && sinceAi >= minGap) || (sinceAi >= s.aiIntervalMin * 60_000 && (buyable.length > 0 || reviewDue));
+      if (!due) {
+        const strong = buyable.find((c) => c.signal!.strength >= FAST_LANE_STRENGTH);
+        if (strong) await tryBuy(strong, Math.round(strong.signal!.strength * 100), "rules", `${why(strong)} (${l("very strong signal", "sehr starkes Signal")})`);
+        return;
+      }
       state.lastAiAt = now;
+      for (const c of buyable) this.aiSeen.set(`${c.mint}:${c.signal!.strategy}`, now);
 
       const solPrice = (await getPrices([SOL_MINT]).catch(() => ({})) as Record<string, { priceChange24h?: number }>)[SOL_MINT];
       const decision = await aiDecide(
         {
-          candidates: canBuy ? passed : [],
+          candidates: buyable,
           positions: p.positions.map((x) => ({
             mint: x.mint,
             symbol: x.symbol,
+            strategy: x.strategy ?? "momentum",
             pnlPct: Math.round(positionPnlPct(x) * 10) / 10,
             heldHours: Math.round(((now - x.openedAt) / 3_600_000) * 10) / 10,
             valueEur: Math.round(positionValueEur(x) * 100) / 100,
             boughtBecause: x.reason,
           })),
-          freeSlots: canBuy ? freeSlots : 0,
+          freeSlots: buyable.length ? freeTotal : 0,
           cashEur: eq.cashEur,
           equityEur: eq.totalEur,
           dailyPnlPct: b.dailyPnlPct,
           solChange24hPct: solPrice?.priceChange24h,
-          strategy: {
-            risk_mode: s.riskMode,
-            stop_loss_pct: s.stopLossPct,
-            take_profit_pct: s.takeProfitPct,
-            take_profit_sell_pct: s.takeProfitSellPct,
-            trailing_stop_pct: s.trailingStopPct,
-            max_hold_hours: s.maxHoldHours,
-          },
+          strategy: { risk_mode: s.riskMode },
+          squad: Object.fromEntries(
+            STRATEGY_IDS.map((id) => [
+              id,
+              {
+                enabled: enabled.has(id),
+                free_slots: Math.max(0, STRATEGIES[id].maxOpen - (openBy[id] ?? 0)),
+                exits: exitProfile(s, id),
+                money_weight: stand[id].weight,
+                closed_trades: stand[id].stats.closed,
+                win_rate: stand[id].stats.winRate,
+                profit_factor: stand[id].stats.profitFactor,
+              },
+            ]),
+          ),
           trackRecord: trackRecordForAi(p),
           recentTrades: state.trades
             .filter((t) => t.mode === state.mode)
@@ -460,6 +554,7 @@ class Bot {
               symbol: t.symbol,
               side: t.side,
               trigger: t.trigger,
+              strategy: t.strategy ?? "momentum",
               pnlPct: t.pnlPct !== undefined ? Math.round(t.pnlPct * 10) / 10 : undefined,
               hoursAgo: Math.round(((now - t.ts) / 3_600_000) * 10) / 10,
             })),
@@ -472,31 +567,43 @@ class Bot {
           const pos = p.positions.find((x) => x.mint === ex.mint);
           if (pos && ex.action === "sell" && ex.sellPct > 0) await this.sell(pos, ex.sellPct, "ai_exit", ex.reason);
         }
-        if (canBuy) {
-          const buys = decision.buys
-            .filter((d) => d.action === "buy" && d.confidence >= s.aiMinConfidence)
-            .sort((a, b2) => b2.confidence - a.confidence)
-            .slice(0, freeSlots);
-          for (const d of buys) {
-            const c = passed.find((x) => x.mint === d.mint);
-            if (!c) continue; // AI can only pick from the vetted list
-            if (!state.running || state.killSwitch.tripped) break; // paused/panic while the AI was thinking
-            await this.buy(c, d.sizePct, "ai", `${d.reason} (${l("AI confidence", "KI-Sicherheit")} ${Math.round(d.confidence * 100)}%)`);
-          }
-          if (!buys.length) addEvent("info", l(`AI decided not to buy anything: ${decision.marketView}`, `KI hat entschieden, nichts zu kaufen: ${decision.marketView}`));
+        const buys = decision.buys
+          .filter((d) => d.action === "buy" && d.confidence >= s.aiMinConfidence)
+          .sort((a, b2) => b2.confidence - a.confidence);
+        for (const d of buys) {
+          const c = buyable.find((x) => x.mint === d.mint);
+          if (!c) continue; // the AI can only pick from the vetted list
+          await tryBuy(c, d.sizePct, "ai", `${STRATEGY_LABEL[c.signal!.strategy]}: ${d.reason} (${l("AI confidence", "KI-Sicherheit")} ${Math.round(d.confidence * 100)}%)`);
         }
+        if (buyable.length && !buys.length) addEvent("info", l(`AI decided not to buy anything: ${decision.marketView}`, `KI hat entschieden, nichts zu kaufen: ${decision.marketView}`));
         return;
       }
       addEvent("warn", l("AI unavailable this round, using rule-based decisions", "KI diese Runde nicht verfügbar, Regeln entscheiden"));
     }
 
-    // Rule-based fallback.
-    if (canBuy) {
-      const picks = passed.filter((c) => (c.score ?? 0) >= 0.62).slice(0, Math.min(freeSlots, 1));
-      for (const c of picks) {
-        if (!state.running || state.killSwitch.tripped) break;
-        await this.buy(c, Math.round((c.score ?? 0.62) * 100), "rules", `${l("Rule score", "Regel-Score")} ${(c.score ?? 0).toFixed(2)}: ${describeBreakdown(c)}`);
-      }
+    // 5) Rule-based decisions: each strategy buys its signals above its own threshold.
+    let bought = 0;
+    for (const c of buyable) {
+      if (bought >= 2) break;
+      if (c.signal!.strength < STRATEGIES[c.signal!.strategy].ruleMin) continue;
+      await tryBuy(c, Math.round(c.signal!.strength * 100), "rules", `${why(c)} (${l("signal", "Signal")} ${c.signal!.strength.toFixed(2)})`);
+      bought++;
+    }
+  }
+
+  /** Every ~10 min: grade big-wallet buys that are 6 h old (did the price go up?). */
+  private async gradeWhales() {
+    const now = Date.now();
+    if (now - this.lastWhaleGrade < 10 * 60_000) return;
+    this.lastWhaleGrade = now;
+    const mints = mintsToGrade(state.whaleBook, now);
+    if (!mints.length) return;
+    try {
+      const prices = await getPrices(mints);
+      const n = gradeWhaleBuys(state.whaleBook, Object.fromEntries(Object.entries(prices).map(([m, pr]) => [m, pr.usdPrice])), now);
+      if (n) log.info(`Whale Tail: graded ${n} big-wallet buys; ${Object.values(state.whaleBook.wallets).filter(isSmartWallet).length} smart wallets known`);
+    } catch (e) {
+      log.debug(`Whale grading skipped: ${errMsg(e)}`);
     }
   }
 
@@ -516,9 +623,13 @@ class Bot {
     const s = effectiveSettings(state.settings);
     const p = portfolio();
     if (p.positions.length >= s.maxPositions) return;
+    const strategy: StrategyId = c.signal?.strategy ?? "momentum";
+    // Smaller bets for riskier styles, more money for strategies with a good record.
+    const weight = standings(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)))[strategy].weight;
+    const scaledPct = Math.round(Math.max(25, Math.min(100, sizePct * STRATEGIES[strategy].sizeFactor * weight)));
     const eq = await this.computeEquity();
     const room = tradeable(eq, s, state.mode);
-    const solAmount = buySizeSol({ equitySol: room.equitySol, freeSol: room.freeSol, sizePct, s });
+    const solAmount = buySizeSol({ equitySol: room.equitySol, freeSol: room.freeSol, sizePct: scaledPct, s });
     if (solAmount <= 0) {
       addEvent("info", l(`Skipped ${c.symbol}: not enough free SOL for a trade`, `${c.symbol} übersprungen: nicht genug freie SOL`));
       return;
@@ -561,6 +672,7 @@ class Bot {
           reason,
           imageUrl: c.imageUrl,
           pool: c.pairAddress,
+          strategy,
         });
       }
       this.recordTrade({
@@ -574,6 +686,8 @@ class Bot {
         trigger,
         reason,
         signature: res.signature,
+        strategy,
+        imageUrl: c.imageUrl,
       });
       addEvent(
         "info",
@@ -640,6 +754,8 @@ class Bot {
         pnlEur,
         pnlPct,
         signature: res.signature,
+        strategy: pos.strategy ?? "momentum",
+        imageUrl: pos.imageUrl,
       });
       addEvent(
         pnlEur >= 0 ? "info" : "warn",
@@ -663,6 +779,8 @@ class Bot {
     state.running = false;
     addEvent("warn", l("PANIC SELL: selling everything and stopping the bot", "NOTVERKAUF: alles wird verkauft, Bot stoppt"));
     await this.sellAll("panic", l("Panic sell by owner", "Notverkauf durch Besitzer"));
+    await this.computeEquity().catch(() => undefined);
+    this.endSession();
     save(true);
   }
 
@@ -671,6 +789,15 @@ class Bot {
     const pos = portfolio().positions.find((x) => x.mint === mint);
     if (!pos) throw new Error("Position not found");
     await this.sell(pos, pct, "manual", l("Sold manually by owner", "Manuell vom Besitzer verkauft"));
+  }
+
+  /** Closes the current run and keeps it in the history (for the session summary). */
+  private endSession() {
+    const cur = state.session;
+    if (!cur || cur.endedAt) return;
+    cur.endedAt = Date.now();
+    cur.endEquityEur = this.lastEquity?.totalEur ?? cur.startEquityEur;
+    state.sessions = [...state.sessions.filter((x) => x.id !== cur.id), { ...cur }];
   }
 
   private recordTrade(t: Omit<Trade, "id" | "ts" | "mode">) {
@@ -701,27 +828,6 @@ function trackRecordForAi(p: PortfolioState) {
       days_ago: Math.round(((Date.now() - t.closedAt) / 86_400_000) * 10) / 10,
     })),
   };
-}
-
-function describeBreakdown(c: Candidate): string {
-  const b = c.scoreBreakdown ?? {};
-  const top = Object.entries(b)
-    .sort((x, y) => y[1] - x[1])
-    .slice(0, 2)
-    .map(([k]) => k);
-  const names: Record<string, [string, string]> = {
-    momentum: ["momentum", "Momentum"],
-    buyPressure: ["buy pressure", "Kaufdruck"],
-    volume: ["rising volume", "steigendes Volumen"],
-    liquidity: ["deep liquidity", "hohe Liquidität"],
-    hype: ["hype/marketing", "Hype/Marketing"],
-    safety: ["safety", "Sicherheit"],
-  };
-  const de = state.settings.language === "de";
-  const labels = top.map((k) => (names[k] ? names[k][de ? 1 : 0] : k));
-  return de
-    ? `stärkste Signale: ${labels.join(", ")}; 1h ${c.priceChange.h1.toFixed(1)}%, 24h-Vol. $${Math.round(c.volume.h24 / 1000)}k`
-    : `strongest signals: ${labels.join(", ")}; 1h ${c.priceChange.h1.toFixed(1)}%, 24h vol $${Math.round(c.volume.h24 / 1000)}k`;
 }
 
 export const bot = new Bot();

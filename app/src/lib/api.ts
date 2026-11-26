@@ -46,6 +46,56 @@ export interface BotPosition {
 }
 
 export type RiskMode = "normal" | "moonshot";
+export type StrategyId = "sniper" | "momentum" | "dip" | "whale";
+export const STRATEGY_IDS: StrategyId[] = ["sniper", "momentum", "dip", "whale"];
+
+export interface ExitProfile {
+  stopLossPct: number;
+  takeProfitPct: number;
+  takeProfitSellPct: number;
+  trailingStopPct: number;
+  maxHoldHours: number;
+}
+
+export interface SquadEntry {
+  enabled: boolean;
+  benched: boolean;
+  weight: number;
+  exits: ExitProfile;
+  closed: number;
+  winRate: number | null;
+  profitFactor: number | null;
+  realizedEur: number;
+}
+
+export interface SessionSummary {
+  id: string;
+  mode: "paper" | "real";
+  live: boolean;
+  startedAt: number;
+  endedAt: number | null;
+  startEur: number;
+  valueEur: number;
+  profitEur: number;
+  multiple: number;
+  trades: number;
+  closed: number;
+  winRate: number | null;
+  avgTradeEur: number | null;
+  byStrategy: Record<StrategyId, { profitEur: number; trades: number; open: number; lastTradeAt: number | null }>;
+  coins: { symbol: string; mint: string; strategy: StrategyId; pnlEur: number; pnlPct: number; exitTriggers: string[]; imageUrl?: string; closedAt: number }[];
+  activity: { ts: number; side: "buy" | "sell"; symbol: string; strategy: StrategyId; trigger: string; valueEur: number; pnlEur: number | null; imageUrl: string | null }[];
+  equity: { ts: number; eur: number }[];
+}
+
+export interface SquadBacktest {
+  coins: number;
+  testDays: number;
+  dipExits: ExitProfile;
+  dip: { trades: number; avgPct: number; winRate: number };
+  momentum: { trades: number; avgPct: number; winRate: number };
+  baseline: { trades: number; avgPct: number; winRate: number };
+}
 
 export interface StrategyInfo {
   stopLossPct: number;
@@ -109,6 +159,9 @@ export interface BotStatus {
     backtest: { createdAt: number; coins: number; testDays: number; trades: number; normal: StrategyResult; moonshot: StrategyResult } | null;
   };
   stats: TradeStats;
+  squad: Record<StrategyId, SquadEntry>;
+  squadBacktest: SquadBacktest | null;
+  session: SessionSummary | null;
   killSwitch: { tripped: boolean; reason?: string; at?: number };
   lastScanAt: number | null;
   nextScanAt: number | null;
@@ -161,6 +214,7 @@ export interface BotSettings {
   stopAt: number;
   closeOnStop: boolean;
   riskMode: RiskMode;
+  strategies: Record<StrategyId, boolean>;
   scanIntervalMin: number;
   monitorIntervalSec: number;
   maxPositions: number;
@@ -361,6 +415,9 @@ export function createApi(serverUrl: string, token: string) {
   return {
     health: () => req<{ ok: boolean }>("GET", "/api/health", undefined, 10_000),
     status: () => req<BotStatus>("GET", "/api/bot/status"),
+    session: (id?: string) => req<{ session: SessionSummary | null }>("GET", `/api/session${id ? `?id=${encodeURIComponent(id)}` : ""}`),
+    sessions: () =>
+      req<{ sessions: { id: string; mode: "paper" | "real"; startedAt: number; endedAt: number | null; startEur: number; endEur: number | null }[] }>("GET", "/api/sessions"),
     start: () => req<{ ok: true }>("POST", "/api/bot/start", {}),
     stop: () => req<{ ok: true }>("POST", "/api/bot/stop", {}),
     panic: () => req<{ ok: true }>("POST", "/api/bot/panic", {}, 120_000),

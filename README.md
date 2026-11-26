@@ -176,6 +176,27 @@ Open the **Chart AI** tab, pick a screenshot (or take a photo of a screen), opti
 
 It needs an AI that can see images: any Claude model works; with Ollama/OpenRouter/Grok, choose a vision model (e.g. a Gemma 3, Qwen-VL or LLaVA model in Ollama). The app shrinks photos before sending. Cost with Claude Opus ≈ $0.03–0.08 per chart, with Haiku a fraction of a cent. It's an opinion based on probabilities — it can't see news, holders, or a team about to sell.
 
+## The strategy squad and the Run dashboard
+
+The bot runs **four strategies side by side**, each with its own way of finding coins, its own entry signal and its own exits:
+
+| | Finds | Buys when | Exits |
+|---|---|---|---|
+| 🎯 **Sniper** | Coins launched 15 min – 12 h ago (GeckoTerminal new pools + 5-min/1-h trending) | Strong, broad buying (many buyers, volume vs. liquidity) and a clean **holder check**: mint & freeze authority revoked, liquidity locked, top 10 real holders ≤ 35 %, no wallet > 12 %, creator ≤ 5 %, 150+ holders (RugCheck full report; pools and lockers excluded) | −30 % stop, sells half at +100 %, 35 % trailing stop, max 8 h; half-size bets |
+| ⚡ **Momentum** | Trending / boosted / well-known coins (≥ 24 h old) | Rising price *and* volume, more buyers than sellers, not overextended (RSI < 80) | Your settings (default −15 % / +40 % / 20 % trail / 24 h) |
+| 🪝 **Dip Hunter** | Coins up strongly over 24 h that are cooling off | 12–40 % below the 24 h high, RSI cooled to 25–52, still not a downtrend, first green 15-min candle | −20 % / sells half at +60 % / 15 % trail / 12 h (chosen by back-test) |
+| 🐋 **Whale Tail** | The most-traded vetted coins | 2+ big wallets bought in the last hour (≈1 % of the pool each, $1k–$25k), big buys ≥ 2× big sells, price not yet up > 50 % | −20 % / sells half at +60 % / 25 % trail / 24 h |
+
+- **Smart money:** Whale Tail remembers every big buy and checks 6 h later whether the price went up. Wallets that keep buying before rises become "smart wallets", and their buys count extra.
+- **Allocator:** after 8+ finished trades, a strategy with a good profit factor gets up to 1.6× the normal bet size, a losing one down to 0.4×. With real money, a strategy with a profit factor below 0.5 after 15+ trades is benched.
+- **Faster decisions:** the AI is asked as soon as a *new* signal appears (at most every few minutes), not on a fixed 20-minute clock; between AI rounds the rules may buy a very strong signal (≥ 0.78) right away. It sees each coin's strategy, signal strength and reasons, whale activity, holder data and every strategy's own record.
+- **Run dashboard (Bot tab):** every Start → Stop is a *run* with its value, profit and "started with" amount, an equity chart (log-scale option), a profit tile per strategy, a banner for the latest trade and the activity feed. **Session summary** shows total profit, start → end and multiple, trades, win rate, average trade and every coin's result with its strategy and exit; earlier runs stay listed.
+- **Turn strategies on/off** in Bot → Strategy squad.
+
+**Honest numbers** (`npm run backtest:squad` in `bot/`, exits chosen on earlier days, reported on the last 10 days they never saw, 65 coins, after 1 % fees): Dip Hunter **−0.8 %** per trade with 45 % winners — the best of the testable rules (the momentum rule −4.5 %, buying any coin −2.9 %), but still not a proven profit. Sniper and Whale Tail can't be tested on old charts (stored charts only exist for coins that survived; whale data only exists live), so they have to prove themselves in paper trading — watch the strategy tiles and the track record.
+
+**About "$10 → $600 in one night" videos:** those show one lucky run out of many. In the one I was shown, a strategy made +$49 while the whole account was worth $3 — that needs a ~17x coin inside half an hour, followed by three more big wins in a row. This bot can have nights like that *only* by luck, the same way it can lose most of a small budget in one night; it doesn't hide the losing runs.
+
 ## Strategy: Normal vs. Moonshot, and the track record
 
 On the Bot tab you choose how the bot trades:

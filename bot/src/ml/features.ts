@@ -168,6 +168,7 @@ export function describeChart(x: number[]) {
   return {
     trend,
     rsi: r(g("rsi_14"), 0),
+    change_15m_pct: r(g("ret_15m") * 100),
     change_1h_pct: r(g("ret_1h") * 100),
     change_4h_pct: r(g("ret_4h") * 100),
     change_24h_pct: r(g("ret_24h") * 100),
