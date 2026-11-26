@@ -11,6 +11,7 @@ import { effectiveSettings, WINRATE_STRATEGIES } from "../risk/profiles.js";
 import {
   allSignals,
   dipCandidate,
+  edgeCheck,
   exitProfile,
   exitSettings,
   FAST_LANE_STRENGTH,
@@ -90,6 +91,7 @@ class Bot {
   private lastWhaleGrade = 0;
   private lastShadowUpdate = 0;
   private lastAutoSwitch = 0;
+  private lastEdgeNote = 0;
   /** Last computed equity, used by the API without hitting the RPC on every request. */
   lastEquity?: Equity;
 
@@ -377,11 +379,31 @@ class Bot {
     const tracked = new Set(STRATEGY_IDS.filter((id) => s.strategies[id]));
     const stand = standings(state.trades, state.mode, held, shadowEvidence(tracked, s.riskMode));
     // "High win rate" mode only uses the two strategies it was tested with.
+    // "Only trade what's winning": strategies losing in the live test sit out (shadow keeps testing them).
+    const live = shadowSummary(state.shadow, now, tracked, s.riskMode).current;
     const enabled = new Set(
-      STRATEGY_IDS.filter((id) => tracked.has(id) && !stand[id].benched && (s.riskMode !== "winrate" || WINRATE_STRATEGIES.has(id))),
+      STRATEGY_IDS.filter(
+        (id) =>
+          tracked.has(id) &&
+          !stand[id].benched &&
+          (s.riskMode !== "winrate" || WINRATE_STRATEGIES.has(id)) &&
+          (!s.requireEdge || edgeCheck(live[id], state.mode, s.language).ok),
+      ),
     );
 
     await this.gradeWhales();
+    const sitting = STRATEGY_IDS.filter((id) => tracked.has(id) && !enabled.has(id));
+    if (!enabled.size && tracked.size && s.requireEdge && now - this.lastEdgeNote > 3_600_000) {
+      this.lastEdgeNote = now;
+      const why = sitting.map((id) => `${STRATEGY_LABEL[id]}: ${edgeCheck(live[id], state.mode, s.language).reason ?? l("not allowed in this mode", "in diesem Modus nicht erlaubt")}`);
+      addEvent(
+        "info",
+        l(
+          `Waiting — no strategy is winning in the live test right now, so nothing is bought (${why.join("; ")}). The live test keeps running.`,
+          `Warte — gerade gewinnt keine Strategie im Live-Test, darum wird nichts gekauft (${why.join("; ")}). Der Live-Test läuft weiter.`,
+        ),
+      );
+    }
 
     // 1) Discover: trending / boosted / watchlist coins, plus fresh launches for the Sniper.
     const launches = tracked.has("sniper") ? await getLaunchMints() : [];

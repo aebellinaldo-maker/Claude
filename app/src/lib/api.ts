@@ -85,6 +85,7 @@ export interface SquadEntry {
   basis: "trades" | "shadow" | "none";
   liveTest: ShadowStat;
   learned: { minStrength: number | null; n: number; avgPct: number | null; allAvgPct: number | null };
+  edge: { ok: boolean; reason?: string };
   enabled: boolean;
   benched: boolean;
   weight: number;
@@ -195,6 +196,8 @@ export interface BotStatus {
   stats: TradeStats;
   squad: Record<StrategyId, SquadEntry>;
   autoMode: boolean;
+  requireEdge: boolean;
+  profitGoalPct: number;
   shadow: ShadowSummary;
   squadBacktest: SquadBacktest | null;
   session: SessionSummary | null;
@@ -251,6 +254,7 @@ export interface BotSettings {
   closeOnStop: boolean;
   riskMode: RiskMode;
   autoMode: boolean;
+  requireEdge: boolean;
   strategies: Record<StrategyId, boolean>;
   scanIntervalMin: number;
   monitorIntervalSec: number;

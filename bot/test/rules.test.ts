@@ -166,7 +166,8 @@ test("real-money budget caps what the bot can trade", () => {
 
 test("auto-stop: profit target, loss limit and end time", () => {
   const now = 1_800_000_000_000;
-  assert.equal(autoStopReason(50, now, s), null); // all off by default
+  assert.equal(autoStopReason(50, now, { ...s, stopAtProfitPct: 0 }), null); // all off
+  assert.ok(autoStopReason(10, now, s), "default goal: +10 %");
   assert.ok(autoStopReason(21, now, { ...s, stopAtProfitPct: 20 }));
   assert.equal(autoStopReason(19, now, { ...s, stopAtProfitPct: 20 }), null);
   assert.ok(autoStopReason(-10, now, { ...s, stopAtLossPct: 10 }));

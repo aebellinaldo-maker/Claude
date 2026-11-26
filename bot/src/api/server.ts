@@ -42,7 +42,7 @@ import { canSelfRestart, describeKeys, EDITABLE_KEYS, updateEnvFile } from "../u
 import { log } from "../util/log.js";
 import { sessionSummary } from "../engine/session.js";
 import { learnedThreshold, shadowSummary } from "../engine/shadow.js";
-import { exitProfile, squadBacktest, standings, STRATEGY_IDS } from "../strategies/squad.js";
+import { edgeCheck, exitProfile, squadBacktest, standings, STRATEGY_IDS } from "../strategies/squad.js";
 import type { RunSession, StrategyId } from "../types.js";
 
 class UserError extends Error {}
@@ -93,6 +93,8 @@ app.get("/api/bot/status", async (c) => {
     strategies: strategies(s),
     squad: squadStatus(),
     autoMode: s.autoMode,
+    requireEdge: s.requireEdge,
+    profitGoalPct: s.stopAtProfitPct,
     shadow: shadowSummary(state.shadow, Date.now(), new Set(STRATEGY_IDS.filter((id) => s.strategies[id])), s.riskMode),
     squadBacktest: squadBacktest(),
     session: state.session ? runSummary(state.session, eq.totalEur) : null,
@@ -239,6 +241,7 @@ function squadStatus() {
         // A strategy that sits out in High win rate mode is shown with its own (normal) rules.
         liveTest: sitsOut(id) ? sum.byStrategy[id].normal : cur[id],
         learned: learnedThreshold(state.shadow, Date.now(), id, sitsOut(id) ? "normal" : s.riskMode),
+        edge: s.requireEdge && !sitsOut(id) ? edgeCheck(cur[id], state.mode, s.language) : { ok: true },
       },
     ]),
   );
@@ -308,6 +311,7 @@ const SettingsPatch = z
     closeOnStop: z.boolean(),
     riskMode: z.enum(["normal", "moonshot", "winrate"]),
     autoMode: z.boolean(),
+    requireEdge: z.boolean(),
     strategies: z.object({ sniper: z.boolean(), momentum: z.boolean(), dip: z.boolean(), whale: z.boolean() }).partial(),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),

@@ -86,6 +86,11 @@ export function SquadCard({ status, onChanged }: { status: BotStatus; onChanged:
                   : ""}
               </T>
             </Row>
+            {!q.edge.ok && q.enabled ? (
+              <View style={{ alignSelf: "flex-start" }}>
+                <Pill label={`💤 ${t("edgePaused", { reason: q.edge.reason ?? "" })}`} color={colors.yellow} bg={colors.yellowDim} />
+              </View>
+            ) : null}
             {status.riskMode === "winrate" && (id === "sniper" || id === "whale") ? (
               <View style={{ alignSelf: "flex-start" }}>
                 <Pill label={t("sitsOutWinrate")} color={colors.yellow} bg={colors.yellowDim} />

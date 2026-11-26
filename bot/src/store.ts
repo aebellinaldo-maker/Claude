@@ -8,7 +8,8 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "en",
   paperBudgetEur: 10,
   realBudgetEur: 0,
-  stopAtProfitPct: 0,
+  // Lock in the win: when a run is up 10 %, sell everything and stop.
+  stopAtProfitPct: 10,
   stopAtLossPct: 0,
   stopAt: 0,
   closeOnStop: true,
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   // The only mode that tested profitable on unseen days; Auto switches if live data disagrees.
   riskMode: "winrate",
   autoMode: true,
+  requireEdge: true,
   strategies: { sniper: true, momentum: true, dip: true, whale: true },
   maxPositions: 4,
   maxPositionPct: 40,

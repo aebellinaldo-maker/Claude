@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View } from "react-native";
+import { Switch, View } from "react-native";
 import { Alert } from "../lib/alert";
 import { useApp } from "../lib/app-context";
 import type { BotStatus, RiskMode, StrategyInfo, StrategyResult } from "../lib/api";
@@ -97,6 +97,27 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
         <Note kind="info">
           {t("autoExplain", { mode: t(mode === "normal" ? "normalMode" : mode === "winrate" ? "winrateMode" : "moonshot") })}
         </Note>
+      ) : null}
+      <Row>
+        <View style={{ flex: 1 }}>
+          <T small bold>
+            🛡️ {t("edgeTitle")}
+          </T>
+          <T small faint>
+            {status.mode === "real" ? t("edgeHintReal") : t("edgeHint")}
+          </T>
+        </View>
+        <Switch
+          value={status.requireEdge}
+          disabled={busy}
+          onValueChange={(v) => void api.saveSettings({ requireEdge: v }).then(onChanged, (e: Error) => Alert.alert(t("error"), e.message))}
+          trackColor={{ true: colors.accent }}
+        />
+      </Row>
+      {status.profitGoalPct > 0 ? (
+        <T small faint>
+          🎯 {t("goalLine", { goal: status.profitGoalPct })}
+        </T>
       ) : null}
       <View style={{ gap: 4 }}>
         <Row>

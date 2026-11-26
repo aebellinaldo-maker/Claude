@@ -208,6 +208,12 @@ What it's used for:
 - **The AI** sees each strategy's live test with every decision and is told to favour what works in today's market.
 - New installs start in **High win rate** mode — the only setup that tested profitable on unseen days — until the live test says otherwise.
 
+## 🛡️ Only trade what's winning, and the +10 % run goal
+
+- **Only trade what's winning** (Bot → Strategy, on by default): with fake money, a strategy whose live shadow test is losing (30+ results, average below 0) stops buying until its live test turns positive again. With **real money** it's stricter: a strategy may only buy once its live test has *proven* a positive average over 30+ results. If nothing is winning, the bot waits and says so in the activity log — no trade beats a losing trade. The shadow test keeps measuring every strategy while it sits out.
+- **Run goal +10 %** (default): when a run is up 10 %, the bot sells everything and stops, locking in the win. Change or switch it off under Bot → “When should the bot stop?”. The Run card shows the progress toward the goal.
+- **What this is not:** a guaranteed +10 % minimum. No strategy can guarantee a return — anyone who promises one is selling something. These rules make the bot trade only what is currently working and keep wins once they're there; a run can still end below zero.
+
 ## Self-tuning and what was tested but NOT added
 
 - **Self-tuning signal strength:** for every strategy the live shadow test checks which minimum signal strength (0.4 … 0.8) would have earned the most. A cut-off is only adopted with 20+ results above it **and** at least +1 point per trade better than taking every signal; then weaker signals are no longer bought (shown in Bot → Strategy squad as "learned: only buys signals ≥ …").

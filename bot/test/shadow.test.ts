@@ -146,3 +146,24 @@ test("self-tuning: a cut-off is learned only when it clearly beats taking every 
   for (let i = 0; i < 40; i++) flat.closed.push({ ...book.closed[0], strength: i % 2 ? 0.5 : 0.75, ret: { normal: 0.02, winrate: 0.02, moonshot: 0.02 } });
   assert.equal(learnedThreshold(flat, T0, "sniper", "normal").minStrength, null);
 });
+
+test("only trade what's winning: paper pauses proven losers, real money needs proven winners", async () => {
+  const { edgeCheck, EDGE_MIN_RESULTS } = await import("../src/strategies/squad.ts");
+  const N = EDGE_MIN_RESULTS;
+  assert.equal(edgeCheck({ n: 5, avgPct: -8 }, "paper", "en").ok, true, "too early to judge");
+  assert.equal(edgeCheck({ n: N, avgPct: -2 }, "paper", "en").ok, false, "losing → sits out");
+  assert.match(edgeCheck({ n: N, avgPct: -2 }, "paper", "en").reason!, /losing/);
+  assert.equal(edgeCheck({ n: N, avgPct: 1.5 }, "paper", "en").ok, true);
+  assert.equal(edgeCheck({ n: 5, avgPct: 9 }, "real", "en").ok, false, "real money: not proven yet");
+  assert.equal(edgeCheck({ n: N, avgPct: 0 }, "real", "en").ok, false, "break-even isn't a proven profit");
+  assert.equal(edgeCheck({ n: N, avgPct: 2 }, "real", "en").ok, true);
+  assert.equal(edgeCheck(undefined, "paper", "en").ok, true);
+});
+
+test("default run goal: +10 % sells everything and stops", async () => {
+  const { autoStopReason } = await import("../src/risk/rules.ts");
+  assert.equal(DEFAULT_SETTINGS.stopAtProfitPct, 10);
+  assert.equal(DEFAULT_SETTINGS.closeOnStop, true);
+  assert.match(autoStopReason(10.2, T0, DEFAULT_SETTINGS) ?? "", /Profit target/);
+  assert.equal(autoStopReason(9.9, T0, DEFAULT_SETTINGS), null);
+});

@@ -44,6 +44,11 @@ export interface Settings {
   riskMode: RiskMode;
   /** Let the bot switch to the mode that is winning in the live shadow test. */
   autoMode: boolean;
+  /**
+   * Only trade what's winning: a strategy whose live shadow test is losing doesn't buy
+   * (and with real money it must first PROVE a profit there). It resumes on its own.
+   */
+  requireEdge: boolean;
   /** Which strategies may open new trades. */
   strategies: Record<StrategyId, boolean>;
 

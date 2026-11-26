@@ -269,6 +269,14 @@ const en = {
   moonshot: "Moonshot",
   winrateMode: "High win rate",
   autoMode: "Auto",
+  edgeTitle: "Only trade what's winning",
+  edgeHint:
+    "A strategy whose live test is losing (30+ results, average below 0) stops buying and starts again by itself when it turns positive. If nothing is winning, the bot waits — no trade beats a losing trade.",
+  edgeHintReal:
+    "Real money: a strategy only buys after its live test has PROVEN a profit (30+ results, positive average). Until then the bot waits and keeps testing.",
+  edgePaused: "paused: {reason}",
+  goalLine: "Run goal +{goal}%: when the run is up {goal}%, the bot sells everything and stops — the win is locked in. (Change it under “When should the bot stop?”.) Not a guarantee: a run can also end below zero.",
+  goalProgress: "Goal +{goal}%",
   autoExplain:
     "Auto: the bot tests every signal live in all three modes and switches to the one that's winning (once each has 30+ results; at most every 6 h). Now trading: {mode}.",
   liveTestTitle: "Live test (every signal, all modes)",
@@ -749,6 +757,14 @@ const de: Record<TKey, string> = {
   moonshot: "Moonshot",
   winrateMode: "Hohe Trefferquote",
   autoMode: "Auto",
+  edgeTitle: "Nur handeln, was gewinnt",
+  edgeHint:
+    "Eine Strategie, die im Live-Test verliert (30+ Ergebnisse, Durchschnitt unter 0), kauft nicht mehr und startet von selbst wieder, sobald sie positiv wird. Gewinnt gerade nichts, wartet der Bot — kein Trade ist besser als ein verlorener.",
+  edgeHintReal:
+    "Echtgeld: Eine Strategie kauft erst, wenn ihr Live-Test einen Gewinn BEWIESEN hat (30+ Ergebnisse, positiver Durchschnitt). Bis dahin wartet der Bot und testet weiter.",
+  edgePaused: "pausiert: {reason}",
+  goalLine: "Run-Ziel +{goal}%: Ist der Run {goal}% im Plus, verkauft der Bot alles und stoppt — der Gewinn ist gesichert. (Änderbar unter „Wann soll der Bot stoppen?“.) Keine Garantie: Ein Run kann auch im Minus enden.",
+  goalProgress: "Ziel +{goal}%",
   autoExplain:
     "Auto: Der Bot testet jedes Signal live in allen drei Modi und wechselt zu dem, der gewinnt (sobald jeder 30+ Ergebnisse hat; höchstens alle 6 Std.). Handelt gerade: {mode}.",
   liveTestTitle: "Live-Test (jedes Signal, alle Modi)",
@@ -967,6 +983,6 @@ const dicts: Record<Lang, Record<TKey, string>> = { en, de };
 
 export function translate(lang: Lang, key: TKey, vars?: Record<string, string | number>): string {
   let s = dicts[lang][key] ?? en[key] ?? key;
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, String(v));
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }

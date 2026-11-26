@@ -131,6 +131,29 @@ export function RunCard({ status }: { status: BotStatus }) {
             {t("startedWith", { eur: eur(r.startEur, lang) })}
           </T>
         </Row>
+        {status.profitGoalPct > 0 && r.live ? (
+          <View style={{ gap: 3, marginTop: 6 }}>
+            <Row>
+              <T small faint>
+                🎯 {t("goalProgress", { goal: status.profitGoalPct })}
+              </T>
+              <Spacer />
+              <T small faint>
+                {`${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% / +${status.profitGoalPct}%`}
+              </T>
+            </Row>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.cardAlt }}>
+              <View
+                style={{
+                  height: 4,
+                  borderRadius: 2,
+                  width: `${Math.max(0, Math.min(100, (pct / status.profitGoalPct) * 100))}%`,
+                  backgroundColor: colors.green,
+                }}
+              />
+            </View>
+          </View>
+        ) : null}
       </View>
 
       <View style={{ backgroundColor: colors.cardAlt, borderRadius: radius.md, padding: 10, gap: 6 }}>

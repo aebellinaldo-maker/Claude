@@ -340,6 +340,38 @@ export function standings(
   return out;
 }
 
+// ------------------------------------------------------------------ only trade what's winning
+
+/** Live results needed before the live test can pause (or, with real money, allow) a strategy. */
+export const EDGE_MIN_RESULTS = 30;
+
+/**
+ * "Only trade what's winning". Paper: a strategy trades unless its live test is clearly
+ * losing (30+ results, average below 0). Real money: it trades only once its live test has
+ * PROVEN a positive average over 30+ results. Either way it resumes by itself when the live
+ * test turns positive — the shadow test keeps following its signals while it sits out.
+ */
+export function edgeCheck(
+  live: { n: number; avgPct: number | null } | undefined,
+  mode: Mode,
+  lang: Settings["language"],
+): { ok: boolean; reason?: string } {
+  const n = live?.n ?? 0;
+  const avg = live?.avgPct ?? null;
+  const l = (en: string, de: string) => L(lang, en, de);
+  const f = (x: number) => `${x >= 0 ? "+" : "−"}${Math.abs(x).toFixed(1)}%`;
+  if (n >= EDGE_MIN_RESULTS && avg !== null && avg < 0) {
+    return { ok: false, reason: l(`losing in the live test (${f(avg)} per trade over ${n})`, `verliert im Live-Test (${f(avg)} pro Trade bei ${n})`) };
+  }
+  if (mode === "real" && !(n >= EDGE_MIN_RESULTS && avg !== null && avg > 0)) {
+    return {
+      ok: false,
+      reason: l(`not proven yet with real money (${n}/${EDGE_MIN_RESULTS} live results)`, `mit Echtgeld noch nicht bewiesen (${n}/${EDGE_MIN_RESULTS} Live-Ergebnisse)`),
+    };
+  }
+  return { ok: true };
+}
+
 // ------------------------------------------------------------------ back-test results
 
 export interface SquadBacktest {
