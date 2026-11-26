@@ -255,6 +255,7 @@ const en = {
   trigger_stop_loss: "Stop-loss",
   trigger_take_profit: "Take-profit",
   trigger_trailing_stop: "Trailing stop",
+  trigger_breakeven: "Break-even stop",
   trigger_time_exit: "Time exit",
   trigger_rug_exit: "Rug protection",
   trigger_ai_exit: "AI exit",
@@ -278,6 +279,7 @@ const en = {
   bestNow: "best now",
   squadLive: "live test: {n} signals · won {w} · avg {avg}",
   squadLiveNone: "live test: collecting signals…",
+  squadLearned: "learned: only buys signals ≥ {min} ({avg} per trade)",
   sitsOutWinrate: "sits out in High win rate mode",
   winrateExplain:
     "Wins most trades: only strong coins (up {min}%+ in 24 h), sells everything at a small profit, gives losers room. Uses only Dip Hunter and Momentum — the two that could be tested.",
@@ -733,6 +735,7 @@ const de: Record<TKey, string> = {
   trigger_stop_loss: "Stop-Loss",
   trigger_take_profit: "Take-Profit",
   trigger_trailing_stop: "Trailing-Stop",
+  trigger_breakeven: "Break-even-Stop",
   trigger_time_exit: "Zeitausstieg",
   trigger_rug_exit: "Rug-Schutz",
   trigger_ai_exit: "KI-Ausstieg",
@@ -756,6 +759,7 @@ const de: Record<TKey, string> = {
   bestNow: "gerade am besten",
   squadLive: "Live-Test: {n} Signale · {w} gewonnen · Ø {avg}",
   squadLiveNone: "Live-Test: sammelt Signale…",
+  squadLearned: "gelernt: kauft nur Signale ≥ {min} ({avg} pro Trade)",
   sitsOutWinrate: "pausiert im Modus Hohe Trefferquote",
   winrateExplain:
     "Gewinnt die meisten Trades: nur starke Coins ({min}%+ in 24 Std.), verkauft alles bei kleinem Gewinn, gibt Verlierern Spielraum. Nutzt nur Dip Hunter und Momentum — die beiden, die sich testen ließen.",

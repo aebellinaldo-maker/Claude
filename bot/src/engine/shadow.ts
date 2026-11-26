@@ -207,3 +207,34 @@ export function shadowSummary(book: ShadowBook, now: number, enabled: Set<Strate
   ) as Record<StrategyId, ShadowStat>;
   return { days, open: book.open.length, byStrategy, byMode, bestMode, current };
 }
+
+export interface LearnedThreshold {
+  /** Minimum signal strength to buy, or null = no cut-off learned yet. */
+  minStrength: number | null;
+  /** Live results above that cut-off, and their average % per trade. */
+  n: number;
+  avgPct: number | null;
+  /** Average of ALL signals of this strategy, for comparison. */
+  allAvgPct: number | null;
+}
+
+const CUTS = [0.4, 0.5, 0.6, 0.7, 0.8];
+
+/**
+ * Self-tuning: which minimum signal strength would have made the most money for this
+ * strategy in the live test (current mode)? A cut-off is only adopted when at least 20
+ * results are above it and it beats taking every signal by 1 point per trade or more —
+ * otherwise the strategy keeps its normal rules.
+ */
+export function learnedThreshold(book: ShadowBook, now: number, strategy: StrategyId, mode: RiskMode, days = 14): LearnedThreshold {
+  const mine = book.closed.filter((r) => r.strategy === strategy && now - r.closedAt <= days * 86_400_000 && (mode !== "winrate" || r.winrateOk));
+  const all = statOf(mine.map((r) => r.ret[mode]));
+  let best: LearnedThreshold = { minStrength: null, n: all.n, avgPct: all.avgPct, allAvgPct: all.avgPct };
+  if (all.n < 20 || all.avgPct === null) return best;
+  for (const cut of CUTS) {
+    const st = statOf(mine.filter((r) => r.strength >= cut).map((r) => r.ret[mode]));
+    if (st.n < 20 || st.avgPct === null) continue;
+    if (st.avgPct >= all.avgPct + 1 && st.avgPct > (best.avgPct ?? -1e9)) best = { minStrength: cut, n: st.n, avgPct: st.avgPct, allAvgPct: all.avgPct };
+  }
+  return best;
+}

@@ -22,7 +22,8 @@
     "ml:refresh": "tsx scripts/ml-refresh.ts",
     "backtest:exits": "tsx scripts/backtest-exits.ts",
     "backtest:squad": "tsx scripts/backtest-squad.ts",
-    "backtest:winrate": "tsx scripts/backtest-winrate.ts"
+    "backtest:winrate": "tsx scripts/backtest-winrate.ts",
+    "backtest:improve": "tsx scripts/backtest-improve.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.13.0",

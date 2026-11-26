@@ -1,4 +1,4 @@
-import { LAMPORTS_PER_SOL, SOL_MINT, buildSwapTx, getQuote, type JupQuote } from "../market/jupiter.js";
+import { LAMPORTS_PER_SOL, SOL_MINT, buildSwapTx, getQuote, type JupQuote, type PriorityLevel } from "../market/jupiter.js";
 import {
   botKeypair,
   closeEmptyTokenAccount,
@@ -31,7 +31,29 @@ export interface Executor {
   /** SOL available for trading (before the fee reserve is subtracted). */
   cashSol(): Promise<number>;
   buy(mint: string, solAmount: number, s: Settings): Promise<BuyResult>;
-  sell(pos: Position, pct: number, s: Settings): Promise<SellResult>;
+  /** `urgent`: an exit that must go through (stop-loss, rug, panic…) — retried harder if it fails. */
+  sell(pos: Position, pct: number, s: Settings, urgent?: boolean): Promise<SellResult>;
+}
+
+export interface SellAttempt {
+  slippageBps: number;
+  priority: PriorityLevel;
+  maxPriorityLamports: number;
+}
+
+/**
+ * How a sell is tried. Normal exits: once. Urgent exits (a coin is dumping): up to three times
+ * right away, each with more allowed slippage and a higher network priority — getting out at
+ * a slightly worse price beats being stuck while it keeps falling.
+ */
+export function sellAttempts(baseSlippageBps: number, urgent: boolean): SellAttempt[] {
+  const first = { slippageBps: Math.max(baseSlippageBps, 300), priority: (urgent ? "high" : "medium") as PriorityLevel, maxPriorityLamports: urgent ? 200_000 : 100_000 };
+  if (!urgent) return [first];
+  return [
+    first,
+    { slippageBps: Math.max(first.slippageBps, 800), priority: "veryHigh", maxPriorityLamports: 500_000 },
+    { slippageBps: Math.max(first.slippageBps, 1500), priority: "veryHigh", maxPriorityLamports: 1_000_000 },
+  ];
 }
 
 function checkImpact(q: JupQuote, s: Settings) {
@@ -107,7 +129,7 @@ export class LiveExecutor implements Executor {
     return { rawReceived, solSpent: Math.max(0, solBefore - solAfter) || solAmount, signature };
   }
 
-  async sell(pos: Position, pct: number, s: Settings): Promise<SellResult> {
+  async sell(pos: Position, pct: number, s: Settings, urgent = false): Promise<SellResult> {
     const holding = await getTokenHolding(this.owner, pos.mint);
     if (!holding || holding.raw === 0n) throw new Error(`No ${pos.symbol} in the bot wallet`);
     // Use the on-chain balance as truth for a full exit.
@@ -115,10 +137,25 @@ export class LiveExecutor implements Executor {
     if (amount > holding.raw) amount = holding.raw;
     const solBefore = await getSolBalance(this.owner);
 
-    const q = await getQuote({ inputMint: pos.mint, outputMint: SOL_MINT, amount, slippageBps: Math.max(s.slippageBps, 300) });
-    const swap = await buildSwapTx(q, this.owner.toBase58());
-    if (swap.simulationError) throw new Error(`Swap simulation failed: ${swap.simulationError.error ?? swap.simulationError.errorCode}`);
-    const signature = await signAndSendBot(swap.swapTransaction, swap.lastValidBlockHeight);
+    let signature = "";
+    let q: JupQuote | undefined;
+    const attempts = sellAttempts(s.slippageBps, urgent);
+    for (let i = 0; i < attempts.length; i++) {
+      const a = attempts[i];
+      try {
+        q = await getQuote({ inputMint: pos.mint, outputMint: SOL_MINT, amount, slippageBps: a.slippageBps });
+        const swap = await buildSwapTx(q, this.owner.toBase58(), a.maxPriorityLamports, a.priority);
+        if (swap.simulationError) throw new Error(`Swap simulation failed: ${swap.simulationError.error ?? swap.simulationError.errorCode}`);
+        signature = await signAndSendBot(swap.swapTransaction, swap.lastValidBlockHeight);
+        break;
+      } catch (e) {
+        // A send can fail on our side yet still land: never sell the same tokens twice.
+        const now = await getTokenHolding(this.owner, pos.mint).catch(() => holding);
+        if (now && now.raw <= holding.raw - amount) break;
+        if (i === attempts.length - 1) throw e;
+        log.warn(`Sell ${pos.symbol} attempt ${i + 1} failed (${errMsg(e)}); retrying with ${attempts[i + 1].slippageBps / 100}% slippage`);
+      }
+    }
 
     await new Promise((r) => setTimeout(r, 1500));
     if (amount === holding.raw) {
@@ -130,7 +167,7 @@ export class LiveExecutor implements Executor {
       }
     }
     const solAfter = await getSolBalance(this.owner);
-    const solReceived = solAfter - solBefore > 0 ? solAfter - solBefore : Number(q.outAmount) / LAMPORTS_PER_SOL;
-    return { rawSold: amount, solReceived, signature };
+    const solReceived = solAfter - solBefore > 0 ? solAfter - solBefore : Number(q?.outAmount ?? 0) / LAMPORTS_PER_SOL;
+    return { rawSold: amount, solReceived, signature: signature || undefined };
   }
 }

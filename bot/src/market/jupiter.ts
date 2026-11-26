@@ -66,7 +66,9 @@ export interface JupSwapTx {
 }
 
 /** Builds an unsigned swap transaction for `userPublicKey` from a quote. */
-export async function buildSwapTx(quote: JupQuote, userPublicKey: string, maxPriorityLamports = 100_000) {
+export type PriorityLevel = "medium" | "high" | "veryHigh";
+
+export async function buildSwapTx(quote: JupQuote, userPublicKey: string, maxPriorityLamports = 100_000, priorityLevel: PriorityLevel = "medium") {
   return fetchJson<JupSwapTx>(`${config.jupiter.baseUrl}/swap/v1/swap`, {
     method: "POST",
     headers: headers(),
@@ -78,7 +80,7 @@ export async function buildSwapTx(quote: JupQuote, userPublicKey: string, maxPri
       dynamicComputeUnitLimit: true,
       dynamicSlippage: false,
       prioritizationFeeLamports: {
-        priorityLevelWithMaxLamports: { maxLamports: maxPriorityLamports, priorityLevel: "medium" },
+        priorityLevelWithMaxLamports: { maxLamports: maxPriorityLamports, priorityLevel },
       },
     },
   });

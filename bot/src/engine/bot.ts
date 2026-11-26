@@ -25,7 +25,7 @@ import {
 import { getLaunchMints } from "../market/launches.js";
 import { getHolderInfo } from "../market/rugcheck.js";
 import { getWhaleInfo, gradeWhaleBuys, isSmartWallet, mintsToGrade } from "../market/whales.js";
-import { openShadow, shadowSummary, updateShadows } from "./shadow.js";
+import { learnedThreshold, openShadow, shadowSummary, updateShadows } from "./shadow.js";
 import { tradeStats } from "./stats.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
@@ -478,7 +478,14 @@ class Bot {
     const canBuy = !b.noNewBuys && freeTotal > 0 && room.freeSol - s.feeReserveSol >= s.minTradeSol;
     if (b.noNewBuys && b.reason) addEvent("warn", b.reason);
     const slotFor = (id: StrategyId) => enabled.has(id) && (openBy[id] ?? 0) < STRATEGIES[id].maxOpen;
-    const buyable = canBuy ? final.filter((c) => slotFor(c.signal!.strategy)) : [];
+    // Self-tuning: a strategy only buys signals above the strength its live test says pays off.
+    const learned = Object.fromEntries(STRATEGY_IDS.map((id) => [id, learnedThreshold(state.shadow, now, id, s.riskMode).minStrength])) as Record<
+      StrategyId,
+      number | null
+    >;
+    const buyable = canBuy
+      ? final.filter((c) => slotFor(c.signal!.strategy) && c.signal!.strength >= (learned[c.signal!.strategy] ?? 0))
+      : [];
     const tryBuy = async (c: Candidate, sizePct: number, trigger: TradeTrigger, reason: string) => {
       const id = c.signal!.strategy;
       if (!state.running || state.killSwitch.tripped || !slotFor(id) || portfolio().positions.length >= s.maxPositions) return;
@@ -565,6 +572,7 @@ class Bot {
                 win_rate: stand[id].stats.winRate,
                 profit_factor: stand[id].stats.profitFactor,
                 live_signal_test: liveTest[id],
+                learned_min_signal_strength: learned[id],
               },
             ]),
           ),
@@ -786,7 +794,8 @@ class Bot {
     const p = portfolio();
     try {
       const sol = await getSolPrice();
-      const res = await executor().sell(pos, pct, s);
+      const urgent = ["stop_loss", "rug_exit", "panic", "kill_switch", "trailing_stop", "auto_stop"].includes(trigger);
+      const res = await executor().sell(pos, pct, s, urgent);
       const rawBefore = BigInt(pos.rawAmount);
       const fraction = rawBefore > 0n ? Number(res.rawSold) / Number(rawBefore) : 1;
       const costPartSol = pos.costSol * fraction;

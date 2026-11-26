@@ -1,6 +1,9 @@
 import type { PortfolioState, Position, Settings, TradeTrigger } from "../types.js";
 import { L } from "../util/i18n.js";
 
+/** Where the break-even stop sells: just above the entry, so fees are covered. */
+export const BREAKEVEN_FLOOR_PCT = 1;
+
 export type ExitSignal =
   | { action: "none" }
   | { action: "sell"; pct: number; trigger: TradeTrigger; reason: string };
@@ -44,6 +47,18 @@ export function exitSignal(
       reason: l(
         `Take-profit: +${pnlPct.toFixed(1)}%, selling ${s.takeProfitSellPct}% and letting the rest run`,
         `Take-Profit: +${pnlPct.toFixed(1)}%, ${s.takeProfitSellPct}% verkauft, der Rest läuft weiter`,
+      ),
+    };
+  }
+  // Break-even stop: a coin that was clearly up must not become a full loss.
+  if (s.breakevenAfterPct > 0 && !pos.tookProfit && peakGainPct >= s.breakevenAfterPct && pnlPct <= BREAKEVEN_FLOOR_PCT) {
+    return {
+      action: "sell",
+      pct: 100,
+      trigger: "breakeven",
+      reason: l(
+        `Break-even stop: was up +${peakGainPct.toFixed(1)}%, now back to ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`,
+        `Break-even-Stop: war +${peakGainPct.toFixed(1)}% im Plus, jetzt zurück bei ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`,
       ),
     };
   }

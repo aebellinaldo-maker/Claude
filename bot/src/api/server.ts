@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { tradeStats } from "../engine/stats.js";
-import { strategies } from "../risk/profiles.js";
+import { strategies, WINRATE_STRATEGIES } from "../risk/profiles.js";
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
@@ -41,9 +41,9 @@ import { analyzeChart } from "../ml/brain.js";
 import { canSelfRestart, describeKeys, EDITABLE_KEYS, updateEnvFile } from "../util/envfile.js";
 import { log } from "../util/log.js";
 import { sessionSummary } from "../engine/session.js";
-import { shadowSummary } from "../engine/shadow.js";
+import { learnedThreshold, shadowSummary } from "../engine/shadow.js";
 import { exitProfile, squadBacktest, standings, STRATEGY_IDS } from "../strategies/squad.js";
-import type { RunSession } from "../types.js";
+import type { RunSession, StrategyId } from "../types.js";
 
 class UserError extends Error {}
 
@@ -219,7 +219,9 @@ function runSummary(sess: RunSession, valueNowEur: number) {
 /** Each strategy: on/off, benched, money weight, exits and its own record (current mode). */
 function squadStatus() {
   const s = state.settings;
-  const cur = shadowSummary(state.shadow, Date.now(), new Set(STRATEGY_IDS.filter((id) => s.strategies[id])), s.riskMode).current;
+  const sum = shadowSummary(state.shadow, Date.now(), new Set(STRATEGY_IDS.filter((id) => s.strategies[id])), s.riskMode);
+  const cur = sum.current;
+  const sitsOut = (id: StrategyId) => s.riskMode === "winrate" && !WINRATE_STRATEGIES.has(id);
   const st = standings(state.trades, state.mode, new Set(portfolio().positions.map((x) => x.mint)), cur);
   return Object.fromEntries(
     STRATEGY_IDS.map((id) => [
@@ -228,13 +230,15 @@ function squadStatus() {
         enabled: s.strategies[id],
         benched: st[id].benched,
         weight: st[id].weight,
-        exits: exitProfile(s, id),
+        exits: exitProfile(sitsOut(id) ? { ...s, riskMode: "normal" } : s, id),
         closed: st[id].stats.closed,
         winRate: st[id].stats.winRate,
         profitFactor: st[id].stats.profitFactor,
         realizedEur: st[id].stats.realizedEur,
         basis: st[id].basis,
-        liveTest: cur[id],
+        // A strategy that sits out in High win rate mode is shown with its own (normal) rules.
+        liveTest: sitsOut(id) ? sum.byStrategy[id].normal : cur[id],
+        learned: learnedThreshold(state.shadow, Date.now(), id, sitsOut(id) ? "normal" : s.riskMode),
       },
     ]),
   );
@@ -318,6 +322,7 @@ const SettingsPatch = z
     takeProfitSellPct: z.number().min(10).max(100),
     trailingStopPct: z.number().min(2).max(90),
     maxHoldHours: z.number().min(1).max(24 * 30),
+    breakevenAfterPct: z.number().min(0).max(100),
     maxDailyLossPct: z.number().min(1).max(100),
     maxDrawdownPct: z.number().min(5).max(100),
     cooldownHours: z.number().min(0).max(168),

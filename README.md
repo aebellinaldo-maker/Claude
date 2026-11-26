@@ -208,6 +208,12 @@ What it's used for:
 - **The AI** sees each strategy's live test with every decision and is told to favour what works in today's market.
 - New installs start in **High win rate** mode — the only setup that tested profitable on unseen days — until the live test says otherwise.
 
+## Self-tuning and what was tested but NOT added
+
+- **Self-tuning signal strength:** for every strategy the live shadow test checks which minimum signal strength (0.4 … 0.8) would have earned the most. A cut-off is only adopted with 20+ results above it **and** at least +1 point per trade better than taking every signal; then weaker signals are no longer bought (shown in Bot → Strategy squad as "learned: only buys signals ≥ …").
+- **Urgent sells:** stop-loss, rug exit, trailing stop, panic and kill-switch sells retry immediately when they fail — first with 3 % allowed slippage and high network priority, then 8 % and 15 % with the highest priority — so the bot isn't stuck while a coin dumps (it re-checks the wallet between tries so it never sells twice). Normal sells still try once.
+- **Tested and rejected** (`npm run backtest:improve`, chosen on earlier days, checked on later ones): a *break-even stop* (sell near the entry once a coin was up 3–7 %) lowered the win rate without a reliable gain, and a *market-mood filter* (no buys while the typical coin is down over 24 h) helped twice, hurt once and did nothing once — i.e. noise. Neither is used; the break-even stop exists as a setting (`breakevenAfterPct`, off).
+
 ## ✅ High win rate mode
 
 Bot tab → Strategy → **High win rate**. The bot then only buys **strong coins (up ≥ 40 % in 24 h)** with Dip Hunter and Momentum (the two strategies that can be tested), sells **everything at +10 %**, and gives a coin room down to **−30 %** for up to 24 h. Sniper and Whale Tail sit out.

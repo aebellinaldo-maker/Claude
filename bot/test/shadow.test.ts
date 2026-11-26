@@ -115,3 +115,34 @@ test("sniper doesn't chase a 5-minute spike", () => {
   assert.deepEqual(sniperFilter(young, s), []);
   assert.ok(sniperFilter({ ...young, priceChange: { ...young.priceChange, m5: 18 } }, s).some((r) => r.includes("spiking")));
 });
+
+test("urgent sells retry with more slippage and priority; normal sells try once", async () => {
+  const { sellAttempts } = await import("../src/engine/executor.ts");
+  assert.deepEqual(sellAttempts(150, false).map((a) => a.slippageBps), [300]);
+  const urgent = sellAttempts(150, true);
+  assert.deepEqual(urgent.map((a) => a.slippageBps), [300, 800, 1500]);
+  assert.deepEqual(urgent.map((a) => a.priority), ["high", "veryHigh", "veryHigh"]);
+  assert.ok(urgent[2].maxPriorityLamports > urgent[0].maxPriorityLamports);
+  assert.deepEqual(sellAttempts(1000, true).map((a) => a.slippageBps), [1000, 1000, 1500], "never below the owner's own setting");
+});
+
+test("self-tuning: a cut-off is learned only when it clearly beats taking every signal", async () => {
+  const { learnedThreshold } = await import("../src/engine/shadow.ts");
+  const book = emptyShadowBook();
+  const add = (strength: number, ret: number) =>
+    book.closed.push({ mint: "m", symbol: "m", strategy: "sniper", strength, ts: T0, closedAt: T0, winrateOk: false, ret: { normal: ret, winrate: ret, moonshot: ret } } as ShadowResult);
+  for (let i = 0; i < 25; i++) add(0.5, -0.08); // weak signals lose
+  for (let i = 0; i < 25; i++) add(0.75, 0.06); // strong ones win
+  const lt = learnedThreshold(book, T0, "sniper", "normal");
+  assert.equal(lt.minStrength, 0.6);
+  assert.equal(lt.n, 25);
+  assert.equal(lt.avgPct, 6);
+  assert.equal(lt.allAvgPct, -1);
+  // Too few results, or no clear gain → no cut-off.
+  const small = emptyShadowBook();
+  small.closed = book.closed.slice(0, 10);
+  assert.equal(learnedThreshold(small, T0, "sniper", "normal").minStrength, null);
+  const flat = emptyShadowBook();
+  for (let i = 0; i < 40; i++) flat.closed.push({ ...book.closed[0], strength: i % 2 ? 0.5 : 0.75, ret: { normal: 0.02, winrate: 0.02, moonshot: 0.02 } });
+  assert.equal(learnedThreshold(flat, T0, "sniper", "normal").minStrength, null);
+});

@@ -78,9 +78,19 @@ export function SquadCard({ status, onChanged }: { status: BotStatus; onChanged:
                       avg: `${(q.liveTest.avgPct ?? 0) >= 0 ? "+" : "−"}${Math.abs(q.liveTest.avgPct ?? 0).toFixed(1)}%`,
                     })
                   : t("squadLiveNone")}
+                {q.learned.minStrength !== null
+                  ? ` · ${t("squadLearned", {
+                      min: q.learned.minStrength.toFixed(1),
+                      avg: `${(q.learned.avgPct ?? 0) >= 0 ? "+" : "−"}${Math.abs(q.learned.avgPct ?? 0).toFixed(1)}%`,
+                    })}`
+                  : ""}
               </T>
-              {status.riskMode === "winrate" && (id === "sniper" || id === "whale") ? <Pill label={t("sitsOutWinrate")} color={colors.yellow} bg={colors.yellowDim} /> : null}
             </Row>
+            {status.riskMode === "winrate" && (id === "sniper" || id === "whale") ? (
+              <View style={{ alignSelf: "flex-start" }}>
+                <Pill label={t("sitsOutWinrate")} color={colors.yellow} bg={colors.yellowDim} />
+              </View>
+            ) : null}
           </View>
         );
       })}

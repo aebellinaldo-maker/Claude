@@ -4,7 +4,7 @@
  * from data and to show honest odds (how often a trade doubles, how often €10 → €100).
  */
 import type { Candle } from "../ml/candles.js";
-import { exitSignal } from "../risk/rules.js";
+import { BREAKEVEN_FLOOR_PCT, exitSignal } from "../risk/rules.js";
 import type { Position, Settings } from "../types.js";
 
 export interface ExitParams {
@@ -13,6 +13,7 @@ export interface ExitParams {
   takeProfitSellPct: number;
   trailingStopPct: number;
   maxHoldHours: number;
+  breakevenAfterPct?: number;
 }
 
 export interface SimTrade {
@@ -34,7 +35,7 @@ export function simulateExit(grid: Candle[], i: number, p: ExitParams, base: Set
   const fee = (opts.feePct ?? 1) / 100;
   const maxBars = opts.maxBars ?? 7 * 96;
   if (i + 4 >= grid.length) return null;
-  const s: Settings = { ...base, ...p };
+  const s: Settings = { ...base, breakevenAfterPct: 0, ...p };
   const entry = grid[i][4];
   const t0 = grid[i][0] * 1000;
   const pos = {
@@ -57,8 +58,13 @@ export function simulateExit(grid: Candle[], i: number, p: ExitParams, base: Set
     const now = ts * 1000 + BAR_MS;
     // 1) the low of the candle: stop-loss or trailing stop (uses the peak from earlier candles)
     const down = exitSignal(pos, low, undefined, now, s);
-    if (down.action === "sell" && (down.trigger === "stop_loss" || down.trigger === "trailing_stop")) {
-      const level = down.trigger === "stop_loss" ? entry * (1 - s.stopLossPct / 100) : pos.peakPriceUsd * (1 - s.trailingStopPct / 100);
+    if (down.action === "sell" && (down.trigger === "stop_loss" || down.trigger === "trailing_stop" || down.trigger === "breakeven")) {
+      const level =
+        down.trigger === "stop_loss"
+          ? entry * (1 - s.stopLossPct / 100)
+          : down.trigger === "breakeven"
+            ? entry * (1 + BREAKEVEN_FLOOR_PCT / 100)
+            : pos.peakPriceUsd * (1 - s.trailingStopPct / 100);
       sell(1, Math.min(level, open));
       break;
     }

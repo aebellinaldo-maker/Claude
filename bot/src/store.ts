@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   takeProfitSellPct: 50,
   trailingStopPct: 20,
   maxHoldHours: 24,
+  breakevenAfterPct: 0,
 
   maxDailyLossPct: 20,
   maxDrawdownPct: 50,

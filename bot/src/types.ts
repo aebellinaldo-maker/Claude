@@ -63,6 +63,11 @@ export interface Settings {
   takeProfitSellPct: number;
   trailingStopPct: number;
   maxHoldHours: number;
+  /**
+   * Break-even stop: once a coin has been up this much (%), sell if it falls back to
+   * +BREAKEVEN_FLOOR_PCT, so a winner can't turn into a full stop-loss (0 = off).
+   */
+  breakevenAfterPct: number;
 
   // --- circuit breakers ---
   maxDailyLossPct: number;
@@ -123,6 +128,7 @@ export type TradeTrigger =
   | "stop_loss"
   | "take_profit"
   | "trailing_stop"
+  | "breakeven"
   | "time_exit"
   | "rug_exit"
   | "ai_exit"

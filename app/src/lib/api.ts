@@ -84,6 +84,7 @@ export interface ShadowSummary {
 export interface SquadEntry {
   basis: "trades" | "shadow" | "none";
   liveTest: ShadowStat;
+  learned: { minStrength: number | null; n: number; avgPct: number | null; allAvgPct: number | null };
   enabled: boolean;
   benched: boolean;
   weight: number;
