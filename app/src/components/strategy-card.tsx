@@ -16,12 +16,27 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
   const mode = status.riskMode;
   const { normal, moonshot, winrate, backtest, winrateBacktest: wb } = status.strategies;
 
+  const auto = status.autoMode;
+  const live = status.shadow;
+  const setAuto = async () => {
+    if (auto || busy) return;
+    setBusy(true);
+    try {
+      await api.saveSettings({ autoMode: true });
+      onChanged();
+    } catch (e) {
+      Alert.alert(t("error"), (e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const set = (next: RiskMode) => {
-    if (next === mode || busy) return;
+    if ((next === mode && !auto) || busy) return;
     const apply = async () => {
       setBusy(true);
       try {
-        await api.saveSettings({ riskMode: next });
+        // Picking a mode by hand turns Auto off.
+        await api.saveSettings({ riskMode: next, autoMode: false });
         onChanged();
       } catch (e) {
         Alert.alert(t("error"), (e as Error).message);
@@ -29,7 +44,7 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
         setBusy(false);
       }
     };
-    if (next === "normal") return void apply();
+    if (next === "normal" || next === mode) return void apply();
     if (next === "winrate") {
       return Alert.alert(`✅ ${t("winrateMode")}`, t("winrateConfirm"), [
         { text: t("cancel"), style: "cancel" },
@@ -73,10 +88,46 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
   return (
     <Card>
       <Row style={{ flexWrap: "wrap" }}>
-        <Chip label={`🛡️ ${t("normalMode")}`} active={mode === "normal"} onPress={() => set("normal")} />
-        <Chip label={`✅ ${t("winrateMode")}`} active={mode === "winrate"} onPress={() => set("winrate")} />
-        <Chip label={`🚀 ${t("moonshot")}`} active={mode === "moonshot"} onPress={() => set("moonshot")} />
+        <Chip label={`🤖 ${t("autoMode")}`} active={auto} onPress={() => void setAuto()} />
+        <Chip label={`🛡️ ${t("normalMode")}`} active={!auto && mode === "normal"} onPress={() => set("normal")} />
+        <Chip label={`✅ ${t("winrateMode")}`} active={!auto && mode === "winrate"} onPress={() => set("winrate")} />
+        <Chip label={`🚀 ${t("moonshot")}`} active={!auto && mode === "moonshot"} onPress={() => set("moonshot")} />
       </Row>
+      {auto ? (
+        <Note kind="info">
+          {t("autoExplain", { mode: t(mode === "normal" ? "normalMode" : mode === "winrate" ? "winrateMode" : "moonshot") })}
+        </Note>
+      ) : null}
+      <View style={{ gap: 4 }}>
+        <Row>
+          <T small bold>
+            📡 {t("liveTestTitle")}
+          </T>
+          <Spacer />
+          <T small faint>
+            {t("liveTestOpen", { n: live.open })}
+          </T>
+        </Row>
+        <T small faint>
+          {t("liveTestHint", { days: live.days })}
+        </T>
+        {(["normal", "winrate", "moonshot"] as const).map((m) => {
+          const r = live.byMode[m];
+          return (
+            <Row key={m}>
+              <T small bold={m === mode} dim={m !== mode}>
+                {m === "normal" ? `🛡️ ${t("normalMode")}` : m === "winrate" ? `✅ ${t("winrateMode")}` : `🚀 ${t("moonshot")}`}
+                {live.bestMode === m ? `  ⭐ ${t("bestNow")}` : ""}
+              </T>
+              <Spacer />
+              <T small color={r.avgPct === null ? colors.textFaint : pnlColor(r.avgPct)}>
+                {r.n ? `${t("wrWins", { w: `${Math.round((r.winRate ?? 0) * 100)}%` })} · ${pctTxt(r.avgPct ?? 0)} · ${r.n}` : t("liveTestWaiting")}
+              </T>
+            </Row>
+          );
+        })}
+      </View>
+      <Divider />
       <T small dim>
         {mode === "moonshot" ? t("moonshotExplain") : mode === "winrate" ? t("winrateExplain", { min: winrate.minChange24hPct }) : t("normalExplain")}
       </T>

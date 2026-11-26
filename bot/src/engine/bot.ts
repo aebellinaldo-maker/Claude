@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { addEvent, portfolio, save, state, today } from "../store.js";
-import type { Candidate, Mode, PortfolioState, Position, StrategyId, Trade, TradeTrigger } from "../types.js";
+import type { Candidate, Mode, PortfolioState, Position, RiskMode, StrategyId, Trade, TradeTrigger } from "../types.js";
 import { discoverCandidates, WATCHLIST } from "../market/discovery.js";
 import { getPrices, SOL_MINT } from "../market/jupiter.js";
 import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
@@ -9,7 +9,7 @@ import { scoreCandidate } from "../risk/scoring.js";
 import { autoStopReason, breakers, buySizeSol, exitSignal, tradeable } from "../risk/rules.js";
 import { effectiveSettings, WINRATE_STRATEGIES } from "../risk/profiles.js";
 import {
-  bestSignal,
+  allSignals,
   dipCandidate,
   exitProfile,
   exitSettings,
@@ -25,6 +25,7 @@ import {
 import { getLaunchMints } from "../market/launches.js";
 import { getHolderInfo } from "../market/rugcheck.js";
 import { getWhaleInfo, gradeWhaleBuys, isSmartWallet, mintsToGrade } from "../market/whales.js";
+import { openShadow, shadowSummary, updateShadows } from "./shadow.js";
 import { tradeStats } from "./stats.js";
 import { aiBriefing, aiBudgetLeft, aiCanSpend, aiDecide, briefingSupported } from "../ai/claude.js";
 import { LiveExecutor, PaperExecutor, TOKEN_ACCOUNT_RENT_SOL, type Executor } from "./executor.js";
@@ -87,6 +88,8 @@ class Bot {
   /** Signals the AI has already judged (mint:strategy → time), so it's only asked about new ones. */
   private aiSeen = new Map<string, number>();
   private lastWhaleGrade = 0;
+  private lastShadowUpdate = 0;
+  private lastAutoSwitch = 0;
   /** Last computed equity, used by the API without hitting the RPC on every request. */
   lastEquity?: Equity;
 
@@ -302,6 +305,7 @@ class Bot {
   async monitor() {
     const s = effectiveSettings(state.settings);
     const p = portfolio();
+    await this.updateShadow();
     if (p.positions.length) {
       const prices = await getPrices(p.positions.map((x) => x.mint));
       for (const pos of [...p.positions]) {
@@ -361,22 +365,26 @@ class Bot {
 
   /** Finds coins for each strategy, checks them, lets the AI (or the rules) choose, and buys. */
   async scan() {
+    this.autoSwitchMode();
     const s = effectiveSettings(state.settings);
     const p = portfolio();
     const eq = await this.computeEquity();
     const b = breakers(p, eq.totalEur, s);
     const now = Date.now();
     const held = new Set(p.positions.map((x) => x.mint));
-    const stand = standings(state.trades, state.mode, held);
+    // Every strategy the owner switched on is TRACKED (its signals go into the shadow test),
+    // but only the ones allowed in this mode and not benched may TRADE.
+    const tracked = new Set(STRATEGY_IDS.filter((id) => s.strategies[id]));
+    const stand = standings(state.trades, state.mode, held, shadowEvidence(tracked, s.riskMode));
     // "High win rate" mode only uses the two strategies it was tested with.
     const enabled = new Set(
-      STRATEGY_IDS.filter((id) => s.strategies[id] && !stand[id].benched && (s.riskMode !== "winrate" || WINRATE_STRATEGIES.has(id))),
+      STRATEGY_IDS.filter((id) => tracked.has(id) && !stand[id].benched && (s.riskMode !== "winrate" || WINRATE_STRATEGIES.has(id))),
     );
 
     await this.gradeWhales();
 
     // 1) Discover: trending / boosted / watchlist coins, plus fresh launches for the Sniper.
-    const launches = enabled.has("sniper") ? await getLaunchMints() : [];
+    const launches = tracked.has("sniper") ? await getLaunchMints() : [];
     const raw = await discoverCandidates(launches);
     const young: Candidate[] = [];
     const standard: Candidate[] = [];
@@ -384,7 +392,7 @@ class Bot {
     for (const c of raw) {
       if (held.has(c.mint) || (state.cooldowns[c.mint] ?? 0) > now) continue;
       if (c.ageHours > 0 && c.ageHours <= SNIPER_MAX_AGE_H && !(c.mint in WATCHLIST)) {
-        if (enabled.has("sniper") && !sniperFilter(c, s).length) young.push(c);
+        if (tracked.has("sniper") && !sniperFilter(c, s).length) young.push(c);
         else rejected++;
         continue;
       }
@@ -402,8 +410,8 @@ class Bot {
     standard.sort((a, b2) => (b2.score ?? 0) - (a.score ?? 0));
     const pick = new Map<string, Candidate>();
     for (const c of standard.slice(0, 8)) pick.set(c.mint, c);
-    if (enabled.has("dip")) for (const c of standard.filter(dipCandidate).slice(0, 4)) pick.set(c.mint, c);
-    if (enabled.has("whale")) for (const c of [...standard].sort((a, b2) => b2.volume.h1 - a.volume.h1).slice(0, 4)) pick.set(c.mint, c);
+    if (tracked.has("dip")) for (const c of standard.filter(dipCandidate).slice(0, 4)) pick.set(c.mint, c);
+    if (tracked.has("whale")) for (const c of [...standard].sort((a, b2) => b2.volume.h1 - a.volume.h1).slice(0, 4)) pick.set(c.mint, c);
     const checked: Candidate[] = [];
     for (const c of [...pick.values()].slice(0, 14)) {
       c.safety = await rugCheck(c, s);
@@ -418,14 +426,17 @@ class Bot {
     }
     // Charts (Dip Hunter needs them; they also keep the own model's archive growing).
     for (const c of checked) await analyzeChart(c);
-    if (enabled.has("whale")) {
+    if (tracked.has("whale")) {
       for (const c of [...checked].sort((a, b2) => b2.volume.h1 - a.volume.h1).slice(0, 5)) {
         c.whales = await getWhaleInfo(c.pairAddress, c.mint, c.liquidityUsd, state.whaleBook);
       }
     }
+    let shadowed = 0;
     for (const c of checked) {
-      c.signal = bestSignal(c, s, enabled) ?? undefined;
-      if (c.signal && s.riskMode === "winrate" && !winrateEntryOk(c, c.signal.strategy)) c.signal = undefined;
+      const sigs = allSignals(c, s, tracked);
+      for (const sg of sigs) if (openShadow(state.shadow, c, sg, now)) shadowed++;
+      c.signal =
+        sigs.find((sg) => enabled.has(sg.strategy) && (s.riskMode !== "winrate" || winrateEntryOk(c, sg.strategy))) ?? undefined;
     }
 
     // Young coins: holder check (developer powers, concentrated supply), then the Sniper signal.
@@ -443,6 +454,8 @@ class Bot {
         rejected++;
         continue;
       }
+      if (openShadow(state.shadow, c, sig, now)) shadowed++;
+      if (!enabled.has("sniper")) continue; // tracked in the shadow test, but not traded in this mode
       c.signal = sig;
       checked.push(c);
     }
@@ -450,7 +463,7 @@ class Bot {
     const final = checked.filter((c) => c.signal).sort((a, b2) => b2.signal!.strength - a.signal!.strength).slice(0, 10);
     state.lastCandidates = final;
     log.info(
-      `Scan: ${raw.length} coins (${launches.length} launches), ${final.length} with a strategy signal, ${rejected} rejected — ` +
+      `Scan: ${raw.length} coins (${launches.length} launches), ${final.length} tradeable signals, ${shadowed} new shadow trades, ${rejected} rejected — ` +
         final.map((c) => `${c.symbol}:${c.signal!.strategy}:${c.signal!.strength}`).join(" "),
     );
     for (const pos of p.positions) {
@@ -521,6 +534,7 @@ class Bot {
       for (const c of buyable) this.aiSeen.set(`${c.mint}:${c.signal!.strategy}`, now);
 
       const solPrice = (await getPrices([SOL_MINT]).catch(() => ({})) as Record<string, { priceChange24h?: number }>)[SOL_MINT];
+      const liveTest = shadowSummary(state.shadow, now, tracked, s.riskMode).current;
       const decision = await aiDecide(
         {
           candidates: buyable,
@@ -550,6 +564,7 @@ class Bot {
                 closed_trades: stand[id].stats.closed,
                 win_rate: stand[id].stats.winRate,
                 profit_factor: stand[id].stats.profitFactor,
+                live_signal_test: liveTest[id],
               },
             ]),
           ),
@@ -598,6 +613,50 @@ class Bot {
     }
   }
 
+  /** Every ~90 s: move every virtual (shadow) trade forward with live prices. */
+  private async updateShadow() {
+    const now = Date.now();
+    if (now - this.lastShadowUpdate < 90_000 || !state.shadow.open.length) return;
+    this.lastShadowUpdate = now;
+    try {
+      const mints = [...new Set(state.shadow.open.map((t) => t.mint))];
+      const prices = await getPrices(mints);
+      const finished = updateShadows(
+        state.shadow,
+        Object.fromEntries(Object.entries(prices).map(([m, pr]) => [m, pr.usdPrice])),
+        now,
+        state.settings,
+      );
+      if (finished) log.info(`Shadow test: ${finished} virtual trades finished (${state.shadow.closed.length} total, ${state.shadow.open.length} open)`);
+    } catch (e) {
+      log.debug(`Shadow update skipped: ${errMsg(e)}`);
+    }
+  }
+
+  /** Auto mode: switch to the mode that is winning in the live shadow test (at most every 6 h). */
+  private autoSwitchMode() {
+    const st = state.settings;
+    if (!st.autoMode) return;
+    const now = Date.now();
+    if (now - this.lastAutoSwitch < 6 * 3_600_000) return;
+    const sum = shadowSummary(state.shadow, now, new Set(STRATEGY_IDS.filter((id) => st.strategies[id])), st.riskMode);
+    if (!sum.bestMode || sum.bestMode === st.riskMode) return;
+    const from = st.riskMode;
+    st.riskMode = sum.bestMode;
+    this.lastAutoSwitch = now;
+    const name = { normal: "Normal", winrate: l("High win rate", "Hohe Trefferquote"), moonshot: "Moonshot" };
+    const a = sum.byMode[sum.bestMode].avgPct,
+      b2 = sum.byMode[from].avgPct;
+    addEvent(
+      "info",
+      l(
+        `AUTO MODE: switched to ${name[sum.bestMode]} — in the live test it made ${a}% per trade vs ${b2}% for ${name[from]}`,
+        `AUTO-MODUS: auf ${name[sum.bestMode]} gewechselt — im Live-Test ${a}% pro Trade gegenüber ${b2}% bei ${name[from]}`,
+      ),
+    );
+    save(true);
+  }
+
   /** Every ~10 min: grade big-wallet buys that are 6 h old (did the price go up?). */
   private async gradeWhales() {
     const now = Date.now();
@@ -632,7 +691,8 @@ class Bot {
     if (p.positions.length >= s.maxPositions) return;
     const strategy: StrategyId = c.signal?.strategy ?? "momentum";
     // Smaller bets for riskier styles, more money for strategies with a good record.
-    const weight = standings(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)))[strategy].weight;
+    const weight = standings(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)), shadowEvidence(new Set(STRATEGY_IDS), s.riskMode))[strategy]
+      .weight;
     const scaledPct = Math.round(Math.max(25, Math.min(100, sizePct * STRATEGIES[strategy].sizeFactor * weight)));
     const eq = await this.computeEquity();
     const room = tradeable(eq, s, state.mode);
@@ -814,6 +874,12 @@ class Bot {
   isWatchlist(mint: string) {
     return mint in WATCHLIST;
   }
+}
+
+/** The live shadow test per strategy, as it trades in the given mode (for the allocator). */
+function shadowEvidence(tracked: Set<StrategyId>, mode: RiskMode) {
+  const cur = shadowSummary(state.shadow, Date.now(), tracked, mode).current;
+  return Object.fromEntries(STRATEGY_IDS.map((id) => [id, { n: cur[id].n, profitFactor: cur[id].profitFactor }]));
 }
 
 /** The bot's own closed trades — why it bought and how it ended — so the AI learns from them. */

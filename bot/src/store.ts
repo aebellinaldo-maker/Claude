@@ -16,7 +16,9 @@ export const DEFAULT_SETTINGS: Settings = {
   scanIntervalMin: 3,
   monitorIntervalSec: 15,
 
-  riskMode: "normal",
+  // The only mode that tested profitable on unseen days; Auto switches if live data disagrees.
+  riskMode: "winrate",
+  autoMode: true,
   strategies: { sniper: true, momentum: true, dip: true, whale: true },
   maxPositions: 4,
   maxPositionPct: 40,
@@ -84,6 +86,7 @@ function freshState(): BotState {
     settings: { ...DEFAULT_SETTINGS },
     sessions: [],
     whaleBook: { pending: [], wallets: {} },
+    shadow: { open: [], closed: [] },
   };
 }
 
@@ -105,6 +108,7 @@ function load(): BotState {
         },
         sessions: raw.sessions ?? [],
         whaleBook: { ...base.whaleBook, ...(raw.whaleBook ?? {}) },
+        shadow: { ...base.shadow, ...(raw.shadow ?? {}) },
         paper: { ...base.paper, ...(raw.paper ?? {}) },
         real: { ...base.real, ...(raw.real ?? {}) },
       };

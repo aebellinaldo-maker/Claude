@@ -65,7 +65,25 @@ export interface ExitProfile {
   maxHoldHours: number;
 }
 
+export interface ShadowStat {
+  n: number;
+  winRate: number | null;
+  avgPct: number | null;
+  profitFactor: number | null;
+}
+
+export interface ShadowSummary {
+  days: number;
+  open: number;
+  byStrategy: Record<StrategyId, Record<RiskMode, ShadowStat>>;
+  byMode: Record<RiskMode, ShadowStat>;
+  bestMode: RiskMode | null;
+  current: Record<StrategyId, ShadowStat>;
+}
+
 export interface SquadEntry {
+  basis: "trades" | "shadow" | "none";
+  liveTest: ShadowStat;
   enabled: boolean;
   benched: boolean;
   weight: number;
@@ -175,6 +193,8 @@ export interface BotStatus {
   };
   stats: TradeStats;
   squad: Record<StrategyId, SquadEntry>;
+  autoMode: boolean;
+  shadow: ShadowSummary;
   squadBacktest: SquadBacktest | null;
   session: SessionSummary | null;
   killSwitch: { tripped: boolean; reason?: string; at?: number };
@@ -229,6 +249,7 @@ export interface BotSettings {
   stopAt: number;
   closeOnStop: boolean;
   riskMode: RiskMode;
+  autoMode: boolean;
   strategies: Record<StrategyId, boolean>;
   scanIntervalMin: number;
   monitorIntervalSec: number;

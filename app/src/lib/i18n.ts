@@ -267,6 +267,17 @@ const en = {
   normalMode: "Normal",
   moonshot: "Moonshot",
   winrateMode: "High win rate",
+  autoMode: "Auto",
+  autoExplain:
+    "Auto: the bot tests every signal live in all three modes and switches to the one that's winning (once each has 30+ results; at most every 6 h). Now trading: {mode}.",
+  liveTestTitle: "Live test (every signal, all modes)",
+  liveTestOpen: "{n} running",
+  liveTestHint:
+    "Each signal is followed on live prices as if it had been bought — with Normal, High win rate and Moonshot exits, after 1 % costs. Last {days} days; won · avg per trade · results.",
+  liveTestWaiting: "collecting…",
+  bestNow: "best now",
+  squadLive: "live test: {n} signals · won {w} · avg {avg}",
+  squadLiveNone: "live test: collecting signals…",
   sitsOutWinrate: "sits out in High win rate mode",
   winrateExplain:
     "Wins most trades: only strong coins (up {min}%+ in 24 h), sells everything at a small profit, gives losers room. Uses only Dip Hunter and Momentum — the two that could be tested.",
@@ -734,6 +745,17 @@ const de: Record<TKey, string> = {
   normalMode: "Normal",
   moonshot: "Moonshot",
   winrateMode: "Hohe Trefferquote",
+  autoMode: "Auto",
+  autoExplain:
+    "Auto: Der Bot testet jedes Signal live in allen drei Modi und wechselt zu dem, der gewinnt (sobald jeder 30+ Ergebnisse hat; höchstens alle 6 Std.). Handelt gerade: {mode}.",
+  liveTestTitle: "Live-Test (jedes Signal, alle Modi)",
+  liveTestOpen: "{n} laufen",
+  liveTestHint:
+    "Jedes Signal wird mit Live-Preisen verfolgt, als wäre es gekauft worden — mit Normal-, Trefferquote- und Moonshot-Ausstiegen, nach 1 % Kosten. Letzte {days} Tage; gewonnen · Ø pro Trade · Ergebnisse.",
+  liveTestWaiting: "sammelt…",
+  bestNow: "gerade am besten",
+  squadLive: "Live-Test: {n} Signale · {w} gewonnen · Ø {avg}",
+  squadLiveNone: "Live-Test: sammelt Signale…",
   sitsOutWinrate: "pausiert im Modus Hohe Trefferquote",
   winrateExplain:
     "Gewinnt die meisten Trades: nur starke Coins ({min}%+ in 24 Std.), verkauft alles bei kleinem Gewinn, gibt Verlierern Spielraum. Nutzt nur Dip Hunter und Momentum — die beiden, die sich testen ließen.",

@@ -41,6 +41,7 @@ import { analyzeChart } from "../ml/brain.js";
 import { canSelfRestart, describeKeys, EDITABLE_KEYS, updateEnvFile } from "../util/envfile.js";
 import { log } from "../util/log.js";
 import { sessionSummary } from "../engine/session.js";
+import { shadowSummary } from "../engine/shadow.js";
 import { exitProfile, squadBacktest, standings, STRATEGY_IDS } from "../strategies/squad.js";
 import type { RunSession } from "../types.js";
 
@@ -91,6 +92,8 @@ app.get("/api/bot/status", async (c) => {
     riskMode: s.riskMode,
     strategies: strategies(s),
     squad: squadStatus(),
+    autoMode: s.autoMode,
+    shadow: shadowSummary(state.shadow, Date.now(), new Set(STRATEGY_IDS.filter((id) => s.strategies[id])), s.riskMode),
     squadBacktest: squadBacktest(),
     session: state.session ? runSummary(state.session, eq.totalEur) : null,
     stats: tradeStats(state.trades, state.mode, new Set(p.positions.map((x) => x.mint)), 5),
@@ -216,7 +219,8 @@ function runSummary(sess: RunSession, valueNowEur: number) {
 /** Each strategy: on/off, benched, money weight, exits and its own record (current mode). */
 function squadStatus() {
   const s = state.settings;
-  const st = standings(state.trades, state.mode, new Set(portfolio().positions.map((x) => x.mint)));
+  const cur = shadowSummary(state.shadow, Date.now(), new Set(STRATEGY_IDS.filter((id) => s.strategies[id])), s.riskMode).current;
+  const st = standings(state.trades, state.mode, new Set(portfolio().positions.map((x) => x.mint)), cur);
   return Object.fromEntries(
     STRATEGY_IDS.map((id) => [
       id,
@@ -229,6 +233,8 @@ function squadStatus() {
         winRate: st[id].stats.winRate,
         profitFactor: st[id].stats.profitFactor,
         realizedEur: st[id].stats.realizedEur,
+        basis: st[id].basis,
+        liveTest: cur[id],
       },
     ]),
   );
@@ -297,6 +303,7 @@ const SettingsPatch = z
     stopAt: z.number().min(0),
     closeOnStop: z.boolean(),
     riskMode: z.enum(["normal", "moonshot", "winrate"]),
+    autoMode: z.boolean(),
     strategies: z.object({ sniper: z.boolean(), momentum: z.boolean(), dip: z.boolean(), whale: z.boolean() }).partial(),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),

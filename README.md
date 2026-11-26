@@ -197,6 +197,17 @@ The bot runs **four strategies side by side**, each with its own way of finding 
 
 **About "$10 → $600 in one night" videos:** those show one lucky run out of many. In the one I was shown, a strategy made +$49 while the whole account was worth $3 — that needs a ~17x coin inside half an hour, followed by three more big wins in a row. This bot can have nights like that *only* by luck, the same way it can lose most of a small budget in one night; it doesn't hide the losing runs.
 
+## 📡 Live shadow test and 🤖 Auto mode
+
+The bot doesn't only learn from the few coins it actually buys. **Every signal of every strategy you switched on** — bought or not, including Sniper and Whale Tail while they sit out — becomes a *virtual trade* that follows live prices (every ~90 s) and is played out three ways: with Normal, High win rate and Moonshot exits, after 1 % costs. That's hundreds of forward-tested results a day instead of a handful of real trades, and it's the only fair test for Sniper and Whale Tail (old charts can't test them).
+
+What it's used for:
+- **Bot → Strategy** shows the live result of each mode (won · average per trade · number of results, last 14 days) and marks the best one; **Bot → Strategy squad** shows each strategy's live result.
+- **Money allocation:** until a strategy has 8 finished real trades, its share of the money follows its live test (profit factor); with real money a strategy that loses in the live test (profit factor < 0.6 over 40+ signals) sits out.
+- **🤖 Auto mode** (on by default): once every mode has 30+ live results, the bot switches to the one with the best average (at most every 6 h) and writes why into the activity log. Picking a mode by hand turns Auto off.
+- **The AI** sees each strategy's live test with every decision and is told to favour what works in today's market.
+- New installs start in **High win rate** mode — the only setup that tested profitable on unseen days — until the live test says otherwise.
+
 ## ✅ High win rate mode
 
 Bot tab → Strategy → **High win rate**. The bot then only buys **strong coins (up ≥ 40 % in 24 h)** with Dip Hunter and Momentum (the two strategies that can be tested), sells **everything at +10 %**, and gives a coin room down to **−30 %** for up to 24 h. Sniper and Whale Tail sit out.

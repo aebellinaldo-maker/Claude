@@ -114,6 +114,8 @@ export function sniperFilter(c: Candidate, s: Settings): string[] {
   if (c.marketCapUsd > s.maxMarketCapUsd) r.push(l("market cap above limit", "Marktkapitalisierung über dem Limit"));
   if (c.priceChange.h1 > 400) r.push(l("vertical pump in the last hour", "senkrechter Pump in der letzten Stunde"));
   if (c.priceChange.m5 < -15 || c.priceChange.h1 < -25) r.push(l("crashing right now", "stürzt gerade ab"));
+  // Don't chase a spike: wait until the 5-minute candle cools down.
+  if (c.priceChange.m5 > 12) r.push(l("spiking right now (wait for a pullback)", "steigt gerade steil (auf Rücksetzer warten)"));
   const { buys, sells } = c.txns.h1;
   if (buys < 30) r.push(l("too few buyers in the last hour", "zu wenige Käufer in der letzten Stunde"));
   if (sells > buys) r.push(l("more sells than buys in the last hour", "mehr Verkäufe als Käufe in der letzten Stunde"));
@@ -270,15 +272,19 @@ export function whaleSignal(c: Candidate, s: Settings): StrategySignal | null {
 
 // ------------------------------------------------------------------ choosing
 
-/** Best signal among the enabled strategies (Sniper is handled separately for young coins). */
-export function bestSignal(c: Candidate, s: Settings, allowed: Set<StrategyId>): StrategySignal | null {
+/** Every signal this coin gives among the allowed strategies, strongest first (Sniper is separate). */
+export function allSignals(c: Candidate, s: Settings, allowed: Set<StrategyId>): StrategySignal[] {
   const sigs = [
     allowed.has("momentum") ? momentumSignal(c, s) : null,
     allowed.has("dip") ? dipSignal(c, s) : null,
     allowed.has("whale") ? whaleSignal(c, s) : null,
   ].filter((x): x is StrategySignal => !!x);
-  sigs.sort((a, b) => b.strength - a.strength);
-  return sigs[0] ?? null;
+  return sigs.sort((a, b) => b.strength - a.strength);
+}
+
+/** Best signal among the enabled strategies (Sniper is handled separately for young coins). */
+export function bestSignal(c: Candidate, s: Settings, allowed: Set<StrategyId>): StrategySignal | null {
+  return allSignals(c, s, allowed)[0] ?? null;
 }
 
 // ------------------------------------------------------------------ allocation
@@ -287,6 +293,14 @@ export interface StrategyStanding {
   weight: number;
   benched: boolean;
   stats: TradeStats;
+  /** Where the weight came from: its own trades, the live shadow test, or neither yet. */
+  basis: "trades" | "shadow" | "none";
+}
+
+/** Live shadow-test result of a strategy in the current mode (see engine/shadow.ts). */
+export interface ShadowEvidence {
+  n: number;
+  profitFactor: number | null;
 }
 
 export const MIN_TRADES_TO_ADAPT = 8;
@@ -296,15 +310,32 @@ export const MIN_TRADES_TO_ADAPT = 8;
  * once there are enough trades to mean something). With real money, a strategy with a
  * profit factor below 0.5 after 15+ trades is benched until it's re-enabled.
  */
-export function standings(trades: Trade[], mode: Mode, held: Set<string>): Record<StrategyId, StrategyStanding> {
+export function standings(
+  trades: Trade[],
+  mode: Mode,
+  held: Set<string>,
+  shadow?: Partial<Record<StrategyId, ShadowEvidence>>,
+): Record<StrategyId, StrategyStanding> {
   const out = {} as Record<StrategyId, StrategyStanding>;
+  const w = (pf: number | null) => Math.max(0.4, Math.min(1.6, 0.5 + 0.5 * (pf ?? 1)));
   for (const id of STRATEGY_IDS) {
     const mine = trades.filter((t) => (t.strategy ?? "momentum") === id);
     const stats = tradeStats(mine, mode, held, 5);
+    const sh = shadow?.[id];
     let weight = 1;
-    if (stats.closed >= MIN_TRADES_TO_ADAPT) weight = Math.max(0.4, Math.min(1.6, 0.5 + 0.5 * (stats.profitFactor ?? 1)));
-    const benched = mode === "real" && stats.closed >= 15 && (stats.profitFactor ?? 1) < 0.5;
-    out[id] = { weight: r2(weight), benched, stats };
+    let basis: StrategyStanding["basis"] = "none";
+    if (stats.closed >= MIN_TRADES_TO_ADAPT) {
+      weight = w(stats.profitFactor);
+      basis = "trades";
+    } else if (sh && sh.n >= 20) {
+      // Not enough own trades yet: use the live shadow test (every signal, bought or not).
+      weight = w(sh.profitFactor);
+      basis = "shadow";
+    }
+    const benched =
+      mode === "real" &&
+      ((stats.closed >= 15 && (stats.profitFactor ?? 1) < 0.5) || (stats.closed < 15 && !!sh && sh.n >= 40 && (sh.profitFactor ?? 1) < 0.6));
+    out[id] = { weight: r2(weight), benched, stats, basis };
   }
   return out;
 }

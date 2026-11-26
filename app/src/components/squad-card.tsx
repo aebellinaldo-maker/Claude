@@ -67,6 +67,18 @@ export function SquadCard({ status, onChanged }: { status: BotStatus; onChanged:
                   : t("squadNoTrades")}
               </T>
               {q.benched ? <Pill label={t("benchedTag")} color={colors.red} bg={colors.redDim} /> : null}
+            </Row>
+            <Row>
+              <T small faint style={{ flex: 1 }}>
+                📡{" "}
+                {q.liveTest.n
+                  ? t("squadLive", {
+                      n: q.liveTest.n,
+                      w: `${Math.round((q.liveTest.winRate ?? 0) * 100)}%`,
+                      avg: `${(q.liveTest.avgPct ?? 0) >= 0 ? "+" : "−"}${Math.abs(q.liveTest.avgPct ?? 0).toFixed(1)}%`,
+                    })
+                  : t("squadLiveNone")}
+              </T>
               {status.riskMode === "winrate" && (id === "sniper" || id === "whale") ? <Pill label={t("sitsOutWinrate")} color={colors.yellow} bg={colors.yellowDim} /> : null}
             </Row>
           </View>

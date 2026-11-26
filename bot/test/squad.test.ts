@@ -18,7 +18,7 @@ import { MOONSHOT } from "../src/risk/profiles.ts";
 import { DEFAULT_SETTINGS } from "../src/store.ts";
 import type { Candidate, HolderInfo, Position, Trade, WhaleBook } from "../src/types.ts";
 
-const s = { ...DEFAULT_SETTINGS };
+const s = { ...DEFAULT_SETTINGS, riskMode: "normal" as const };
 const NOW = 1_800_000_000_000;
 
 function cand(over: Partial<Candidate> = {}): Candidate {

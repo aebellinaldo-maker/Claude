@@ -1,3 +1,5 @@
+import type { ShadowBook } from "./engine/shadow.js";
+
 export type Mode = "paper" | "real";
 
 /**
@@ -9,6 +11,7 @@ export type Mode = "paper" | "real";
  * - whale:    coins that large wallets (and wallets with a good record) are buying right now
  */
 export type StrategyId = "sniper" | "momentum" | "dip" | "whale";
+export type RiskMode = "normal" | "moonshot" | "winrate";
 export type Lang = "en" | "de";
 
 export interface Settings {
@@ -38,7 +41,9 @@ export interface Settings {
    * "winrate": only Dip Hunter and Momentum on coins up ≥40 % in 24 h, selling everything at
    * a small target with a wide stop — wins most trades, but each loss is several wins.
    */
-  riskMode: "normal" | "moonshot" | "winrate";
+  riskMode: RiskMode;
+  /** Let the bot switch to the mode that is winning in the live shadow test. */
+  autoMode: boolean;
   /** Which strategies may open new trades. */
   strategies: Record<StrategyId, boolean>;
 
@@ -311,4 +316,6 @@ export interface BotState {
   session?: RunSession;
   sessions: RunSession[];
   whaleBook: WhaleBook;
+  /** Virtual trades for every signal (see engine/shadow.ts). */
+  shadow: ShadowBook;
 }
