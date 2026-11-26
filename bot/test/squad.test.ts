@@ -212,3 +212,28 @@ test("run summary: profit per strategy, coin list, open positions count live", (
   assert.equal(sum.activity[0].symbol, "BUCK");
   assert.equal(sum.equity[0].eur, 10);
 });
+
+test("high win rate mode: sells everything at +10 %, stop −30 %, only strong coins", async () => {
+  const { winrateEntryOk } = await import("../src/strategies/squad.ts");
+  const { simulateExit } = await import("../src/backtest/exits.ts");
+  const w = { ...s, riskMode: "winrate" as const };
+  const x = exitSettings(w, "dip");
+  assert.equal(x.takeProfitPct, 10);
+  assert.equal(x.takeProfitSellPct, 100);
+  assert.equal(x.stopLossPct, 30);
+  // Price goes +4 %, +12 % → the whole position is sold at +10 %.
+  const closes = [1, 1.04, 1.12, 1.2, 1.3];
+  const grid = closes.map((c, i) => [1_700_000_000 + i * 900, i ? closes[i - 1] : c, Math.max(c, i ? closes[i - 1] : c), Math.min(c, i ? closes[i - 1] : c), c, 1000] as [number, number, number, number, number, number]);
+  for (let k = 0; k < 4; k++) grid.push([grid[grid.length - 1][0] + 900, 1.3, 1.3, 1.3, 1.3, 1000]);
+  const r = simulateExit(grid, 0, x, s, { feePct: 0 })!;
+  assert.ok(Math.abs(r.ret - 0.1) < 1e-9, `got ${r.ret}`);
+
+  const strong = cand({ ageHours: 48, priceChange: { m5: 1, h1: 5, h6: 20, h24: 55 } });
+  assert.equal(winrateEntryOk(strong, "dip"), true);
+  assert.equal(winrateEntryOk({ ...strong, priceChange: { ...strong.priceChange, h24: 25 } }, "dip"), false, "not strong enough");
+  assert.equal(winrateEntryOk(strong, "momentum"), false, "momentum needs the tested chart rule");
+  const chart = { trend: "up", rsi: 62, change_1h_pct: 5, volume_vs_avg_1h: 1.6 };
+  assert.equal(winrateEntryOk({ ...strong, chart }, "momentum"), true);
+  assert.equal(winrateEntryOk({ ...strong, chart: { ...chart, rsi: 85 } }, "momentum"), false);
+  assert.equal(winrateEntryOk(strong, "sniper"), false, "untested strategies sit out");
+});

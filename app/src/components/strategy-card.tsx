@@ -14,7 +14,7 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
   const { t, api } = useApp();
   const [busy, setBusy] = useState(false);
   const mode = status.riskMode;
-  const { normal, moonshot, backtest } = status.strategies;
+  const { normal, moonshot, winrate, backtest, winrateBacktest: wb } = status.strategies;
 
   const set = (next: RiskMode) => {
     if (next === mode || busy) return;
@@ -30,6 +30,12 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
       }
     };
     if (next === "normal") return void apply();
+    if (next === "winrate") {
+      return Alert.alert(`✅ ${t("winrateMode")}`, t("winrateConfirm"), [
+        { text: t("cancel"), style: "cancel" },
+        { text: t("confirm"), onPress: () => void apply() },
+      ]);
+    }
     Alert.alert(`🚀 ${t("moonshot")}`, status.mode === "real" ? `${t("moonshotConfirm")}\n\n${t("moonshotRealWarn")}` : t("moonshotConfirm"), [
       { text: t("cancel"), style: "cancel" },
       { text: t("confirm"), style: "destructive", onPress: () => void apply() },
@@ -37,7 +43,7 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
   };
 
   const describe = (x: StrategyInfo) =>
-    t("strategyRules", {
+    t(x.trailingStopPct >= 90 ? "strategyRulesNoTrail" : "strategyRules", {
       n: x.maxPositions,
       size: x.maxPositionPct,
       tp: x.takeProfitPct,
@@ -68,14 +74,47 @@ export function StrategyCard({ status, onChanged }: { status: BotStatus; onChang
     <Card>
       <Row style={{ flexWrap: "wrap" }}>
         <Chip label={`🛡️ ${t("normalMode")}`} active={mode === "normal"} onPress={() => set("normal")} />
+        <Chip label={`✅ ${t("winrateMode")}`} active={mode === "winrate"} onPress={() => set("winrate")} />
         <Chip label={`🚀 ${t("moonshot")}`} active={mode === "moonshot"} onPress={() => set("moonshot")} />
       </Row>
       <T small dim>
-        {mode === "moonshot" ? t("moonshotExplain") : t("normalExplain")}
+        {mode === "moonshot" ? t("moonshotExplain") : mode === "winrate" ? t("winrateExplain", { min: winrate.minChange24hPct }) : t("normalExplain")}
       </T>
-      <T small>{describe(mode === "moonshot" ? moonshot : normal)}</T>
+      <T small>{describe(mode === "moonshot" ? moonshot : mode === "winrate" ? winrate : normal)}</T>
       {mode === "moonshot" ? <Note kind="warn">{t("moonshotWarn")}</Note> : null}
-      {backtest ? (
+      {mode === "winrate" ? <Note kind="warn">{t("winrateWarn")}</Note> : null}
+      {mode === "winrate" && wb ? (
+        <>
+          <Divider />
+          <T small bold>
+            🧪 {t("btTitle")}
+          </T>
+          <T small faint>
+            {t("wrIntro", { days: wb.testDays, coins: wb.coins })}
+          </T>
+          {(["dip", "momentum"] as const).map((k) => {
+            const r = wb[k];
+            if (!r) return null;
+            return (
+              <View key={k} style={{ gap: 2 }}>
+                <Row>
+                  <T small bold>
+                    {k === "dip" ? "🪝 Dip Hunter" : "⚡ Momentum"}
+                  </T>
+                  <Spacer />
+                  <T small bold color={colors.green}>
+                    {t("wrWins", { w: `${Math.round(r.test.winRate * 100)}%` })}
+                  </T>
+                </Row>
+                <T small faint>
+                  {t("wrLine", { avg: pctTxt(r.test.avgPct), avg2: pctTxt(r.test2pctFees.avgPct), n: r.test.trades, streak: r.test.lossStreak })}
+                </T>
+              </View>
+            );
+          })}
+        </>
+      ) : null}
+      {backtest && mode !== "winrate" ? (
         <>
           <Divider />
           <T small bold>

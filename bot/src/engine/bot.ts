@@ -7,7 +7,7 @@ import { getSolPrice, lastSolEur, usdToEur } from "../market/prices.js";
 import { marketFilter, rugCheck } from "../risk/safety.js";
 import { scoreCandidate } from "../risk/scoring.js";
 import { autoStopReason, breakers, buySizeSol, exitSignal, tradeable } from "../risk/rules.js";
-import { effectiveSettings } from "../risk/profiles.js";
+import { effectiveSettings, WINRATE_STRATEGIES } from "../risk/profiles.js";
 import {
   bestSignal,
   dipCandidate,
@@ -20,6 +20,7 @@ import {
   standings,
   STRATEGIES,
   STRATEGY_IDS,
+  winrateEntryOk,
 } from "../strategies/squad.js";
 import { getLaunchMints } from "../market/launches.js";
 import { getHolderInfo } from "../market/rugcheck.js";
@@ -367,7 +368,10 @@ class Bot {
     const now = Date.now();
     const held = new Set(p.positions.map((x) => x.mint));
     const stand = standings(state.trades, state.mode, held);
-    const enabled = new Set(STRATEGY_IDS.filter((id) => s.strategies[id] && !stand[id].benched));
+    // "High win rate" mode only uses the two strategies it was tested with.
+    const enabled = new Set(
+      STRATEGY_IDS.filter((id) => s.strategies[id] && !stand[id].benched && (s.riskMode !== "winrate" || WINRATE_STRATEGIES.has(id))),
+    );
 
     await this.gradeWhales();
 
@@ -419,7 +423,10 @@ class Bot {
         c.whales = await getWhaleInfo(c.pairAddress, c.mint, c.liquidityUsd, state.whaleBook);
       }
     }
-    for (const c of checked) c.signal = bestSignal(c, s, enabled) ?? undefined;
+    for (const c of checked) {
+      c.signal = bestSignal(c, s, enabled) ?? undefined;
+      if (c.signal && s.riskMode === "winrate" && !winrateEntryOk(c, c.signal.strategy)) c.signal = undefined;
+    }
 
     // Young coins: holder check (developer powers, concentrated supply), then the Sniper signal.
     young.sort((a, b2) => b2.volume.h1 * (b2.txns.h1.buys / Math.max(1, b2.txns.h1.sells)) - a.volume.h1 * (a.txns.h1.buys / Math.max(1, a.txns.h1.sells)));

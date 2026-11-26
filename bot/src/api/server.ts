@@ -296,7 +296,7 @@ const SettingsPatch = z
     stopAtLossPct: z.number().min(0).max(100),
     stopAt: z.number().min(0),
     closeOnStop: z.boolean(),
-    riskMode: z.enum(["normal", "moonshot"]),
+    riskMode: z.enum(["normal", "moonshot", "winrate"]),
     strategies: z.object({ sniper: z.boolean(), momentum: z.boolean(), dip: z.boolean(), whale: z.boolean() }).partial(),
     scanIntervalMin: z.number().min(2).max(240),
     monitorIntervalSec: z.number().min(10).max(600),

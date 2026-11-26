@@ -1,0 +1,80 @@
+{
+  "createdAt": 1795686966920,
+  "coins": 65,
+  "testDays": 9,
+  "minChange24hPct": 40,
+  "dip": {
+    "chosen": {
+      "takeProfitPct": 10,
+      "stopLossPct": 30,
+      "maxHoldHours": 24,
+      "takeProfitSellPct": 100,
+      "trailingStopPct": 90
+    },
+    "valid": {
+      "trades": 140,
+      "winRate": 0.793,
+      "avgPct": 2,
+      "worstPct": -30.7,
+      "lossStreak": 4
+    },
+    "test": {
+      "trades": 91,
+      "winRate": 0.791,
+      "avgPct": 2.1,
+      "worstPct": -30.7,
+      "lossStreak": 2
+    },
+    "test2pctFees": {
+      "trades": 91,
+      "winRate": 0.791,
+      "avgPct": 1.1,
+      "worstPct": -31.4,
+      "lossStreak": 2
+    },
+    "appSetting": {
+      "trades": 91,
+      "winRate": 0.791,
+      "avgPct": 2.1,
+      "worstPct": -30.7,
+      "lossStreak": 2
+    }
+  },
+  "momentum": {
+    "chosen": {
+      "takeProfitPct": 10,
+      "stopLossPct": 30,
+      "maxHoldHours": 24,
+      "takeProfitSellPct": 100,
+      "trailingStopPct": 90
+    },
+    "valid": {
+      "trades": 133,
+      "winRate": 0.774,
+      "avgPct": 0.9,
+      "worstPct": -30.7,
+      "lossStreak": 3
+    },
+    "test": {
+      "trades": 91,
+      "winRate": 0.747,
+      "avgPct": 0.1,
+      "worstPct": -30.7,
+      "lossStreak": 4
+    },
+    "test2pctFees": {
+      "trades": 91,
+      "winRate": 0.747,
+      "avgPct": -0.9,
+      "worstPct": -31.4,
+      "lossStreak": 4
+    },
+    "appSetting": {
+      "trades": 91,
+      "winRate": 0.747,
+      "avgPct": 0.1,
+      "worstPct": -30.7,
+      "lossStreak": 4
+    }
+  }
+}

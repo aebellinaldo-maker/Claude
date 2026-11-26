@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Candidate, HolderInfo, Mode, Settings, StrategyId, StrategySignal, Trade } from "../types.js";
 import { scoreCandidate } from "../risk/scoring.js";
-import { MOONSHOT } from "../risk/profiles.js";
+import { MOONSHOT, WINRATE, WINRATE_MIN_24H_PCT } from "../risk/profiles.js";
 import { tradeStats, type TradeStats } from "../engine/stats.js";
 import { L } from "../util/i18n.js";
 
@@ -75,6 +75,7 @@ export const FAST_LANE_STRENGTH = 0.78;
 /** The exit settings a position of this strategy is managed with. */
 export function exitSettings(s: Settings, id: StrategyId | undefined): Settings {
   if (s.riskMode === "moonshot") return { ...s, ...MOONSHOT };
+  if (s.riskMode === "winrate") return { ...s, ...WINRATE };
   const d = STRATEGIES[id ?? "momentum"].exits;
   return d === "owner" ? s : { ...s, ...d };
 }
@@ -189,6 +190,18 @@ export function momentumSignal(c: Candidate, s: Settings): StrategySignal | null
       ? [`${sp(c.priceChange.h1)} in 1 Std., ${sp(c.priceChange.h6, 0)} in 6 Std.`, `Volumen ${accel}× Durchschnitt`, `${c.txns.h1.buys}/${c.txns.h1.sells} Käufe/Verkäufe`]
       : [`${sp(c.priceChange.h1)} in 1h, ${sp(c.priceChange.h6, 0)} in 6h`, `volume ${accel}× average`, `${c.txns.h1.buys}/${c.txns.h1.sells} buys/sells`],
   };
+}
+
+/**
+ * "High win rate" mode: only coins already up ≥ 40 % in 24 h, and for Momentum the exact rule
+ * that was back-tested (rising > 3 % in 1 h, short-term trend up, volume > 1.2× average, RSI < 80).
+ */
+export function winrateEntryOk(c: Candidate, strategy: StrategyId): boolean {
+  if (c.priceChange.h24 < WINRATE_MIN_24H_PCT) return false;
+  if (strategy === "dip") return true;
+  if (strategy !== "momentum") return false;
+  const ch = c.chart;
+  return !!ch && Number(ch.change_1h_pct) > 3 && ch.trend !== "down" && Number(ch.volume_vs_avg_1h) > 1.2 && Number(ch.rsi) < 80;
 }
 
 // ------------------------------------------------------------------ Dip Hunter

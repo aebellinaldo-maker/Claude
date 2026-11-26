@@ -266,11 +266,24 @@ const en = {
   strategyTitle: "Strategy",
   normalMode: "Normal",
   moonshot: "Moonshot",
+  winrateMode: "High win rate",
+  sitsOutWinrate: "sits out in High win rate mode",
+  winrateExplain:
+    "Wins most trades: only strong coins (up {min}%+ in 24 h), sells everything at a small profit, gives losers room. Uses only Dip Hunter and Momentum — the two that could be tested.",
+  winrateWarn:
+    "A high win rate isn't the same as big profit: each win is small (+10 %) and one stop-loss (−30 %) costs about three wins. Sniper and Whale Tail sit out in this mode.",
+  winrateConfirm:
+    "The bot will only buy strong coins and sell everything at +10 %. It should win about 3 of 4 trades, but a loss is −30 %. Switch?",
+  wrIntro: "Last {days} days of charts it never saw ({coins} coins), 1 % costs per trade:",
+  wrWins: "won {w}",
+  wrLine: "avg {avg} per trade ({avg2} with 2 % costs) · {n} trades · at most {streak} losses in a row",
   normalExplain: "Steady: several smaller bets, takes profit early and cuts losses quickly.",
   moonshotExplain:
     "Fewer, bigger bets that are allowed to run: at the first target it sells part (your stake is back) and lets the rest ride for a possible multi-x.",
   strategyRules:
     "Up to {n} coins, max {size}% of the money in one coin · sells {sell}% at +{tp}% · stop-loss −{sl}% · trailing stop {trail}% below the peak · gives a coin up to {h} h to move.",
+  strategyRulesNoTrail:
+    "Up to {n} coins, max {size}% of the money in one coin · sells {sell}% at +{tp}% · stop-loss −{sl}% · gives a coin up to {h} h to move.",
   moonshotWarn: "Bigger chance of a big win — and of losing much of the budget fast. Try it with fake money first.",
   moonshotConfirm:
     "Moonshot makes fewer, bigger bets and lets winners run. That raises the chance of a big win, but also of losing much of the budget fast. Switch?",
@@ -336,9 +349,10 @@ const en = {
   squadTitle: "Strategy squad",
   squadHint: "Four strategies trade side by side. Turn them on or off — the bot gives more money to the ones that are winning.",
   benchedTag: "benched (kept losing)",
-  squadRecord: "{n} trades · win {w} · profit factor {pf} · money ×{m}",
+  squadRecord: "{trades} · win {w} · profit factor {pf} · money ×{m}",
   squadNoTrades: "no finished trades yet",
   exitsLine: "stop −{sl}% · sells {sell}% at +{tp}% · trail {trail}% · max {h}\u00A0h",
+  exitsLineNoTrail: "stop −{sl}% · sells {sell}% at +{tp}% · max {h}\u00A0h",
   dipTested:
     "Tested on {days} days of charts it never saw: Dip Hunter {dip} per trade ({win} winners), the momentum rule {mom}, buying anything {base} — after fees. Sniper and Whale Tail can't be tested on old charts; watch them in paper mode.",
   squadOffAll: "All strategies are off — the bot won't buy anything.",
@@ -719,11 +733,24 @@ const de: Record<TKey, string> = {
   strategyTitle: "Strategie",
   normalMode: "Normal",
   moonshot: "Moonshot",
+  winrateMode: "Hohe Trefferquote",
+  sitsOutWinrate: "pausiert im Modus Hohe Trefferquote",
+  winrateExplain:
+    "Gewinnt die meisten Trades: nur starke Coins ({min}%+ in 24 Std.), verkauft alles bei kleinem Gewinn, gibt Verlierern Spielraum. Nutzt nur Dip Hunter und Momentum — die beiden, die sich testen ließen.",
+  winrateWarn:
+    "Hohe Trefferquote heißt nicht großer Gewinn: Jeder Gewinn ist klein (+10 %), und ein Stop-Loss (−30 %) kostet etwa drei Gewinne. Sniper und Whale Tail pausieren in diesem Modus.",
+  winrateConfirm:
+    "Der Bot kauft nur starke Coins und verkauft alles bei +10 %. Er sollte etwa 3 von 4 Trades gewinnen, aber ein Verlust ist −30 %. Umschalten?",
+  wrIntro: "Die letzten {days} Tage Charts, die es nie gesehen hat ({coins} Coins), 1 % Kosten pro Trade:",
+  wrWins: "{w} gewonnen",
+  wrLine: "Ø {avg} pro Trade ({avg2} bei 2 % Kosten) · {n} Trades · höchstens {streak} Verluste in Folge",
   normalExplain: "Ruhig: mehrere kleinere Einsätze, nimmt Gewinne früh mit und begrenzt Verluste schnell.",
   moonshotExplain:
     "Weniger, größere Einsätze, die laufen dürfen: Beim ersten Ziel wird ein Teil verkauft (dein Einsatz ist zurück), der Rest läuft weiter für ein mögliches Vielfaches.",
   strategyRules:
     "Bis zu {n} Coins, max. {size}% des Geldes in einem Coin · verkauft {sell}% bei +{tp}% · Stop-Loss −{sl}% · Trailing-Stop {trail}% unter dem Hoch · gibt einem Coin bis zu {h} Std. Zeit.",
+  strategyRulesNoTrail:
+    "Bis zu {n} Coins, max. {size}% des Geldes in einem Coin · verkauft {sell}% bei +{tp}% · Stop-Loss −{sl}% · gibt einem Coin bis zu {h} Std. Zeit.",
   moonshotWarn: "Größere Chance auf einen großen Gewinn — und darauf, schnell viel vom Budget zu verlieren. Teste es zuerst mit Spielgeld.",
   moonshotConfirm:
     "Moonshot macht weniger, größere Einsätze und lässt Gewinner laufen. Das erhöht die Chance auf einen großen Gewinn, aber auch darauf, schnell viel vom Budget zu verlieren. Umschalten?",
@@ -789,9 +816,10 @@ const de: Record<TKey, string> = {
   squadTitle: "Strategie-Team",
   squadHint: "Vier Strategien handeln nebeneinander. Schalte sie an oder aus — der Bot gibt den erfolgreichen mehr Geld.",
   benchedTag: "pausiert (hat ständig verloren)",
-  squadRecord: "{n} Trades · Treffer {w} · Profitfaktor {pf} · Geld ×{m}",
+  squadRecord: "{trades} · Treffer {w} · Profitfaktor {pf} · Geld ×{m}",
   squadNoTrades: "noch keine abgeschlossenen Trades",
   exitsLine: "Stop −{sl}% · verkauft {sell}% bei +{tp}% · Trailing {trail}% · max. {h}\u00A0Std.",
+  exitsLineNoTrail: "Stop −{sl}% · verkauft {sell}% bei +{tp}% · max. {h}\u00A0Std.",
   dipTested:
     "Getestet auf {days} Tagen Charts, die es nie gesehen hat: Dip Hunter {dip} pro Trade ({win} Gewinner), die Momentum-Regel {mom}, alles kaufen {base} — nach Gebühren. Sniper und Whale Tail lassen sich nicht auf alten Charts testen; beobachte sie im Testmodus.",
   squadOffAll: "Alle Strategien sind aus — der Bot kauft nichts.",

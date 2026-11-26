@@ -147,7 +147,7 @@ export function RunCard({ status }: { status: BotStatus }) {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         {STRATEGY_IDS.map((id) => {
           const b = r.byStrategy[id];
-          const on = status.squad[id]?.enabled && !status.squad[id]?.benched;
+          const on = status.squad[id]?.enabled && !status.squad[id]?.benched && !(status.riskMode === "winrate" && (id === "sniper" || id === "whale"));
           const hot = id === lastTradeStrategy && b.lastTradeAt && Date.now() - b.lastTradeAt < 30 * 60_000;
           return (
             <View

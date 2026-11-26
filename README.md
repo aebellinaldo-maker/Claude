@@ -197,6 +197,19 @@ The bot runs **four strategies side by side**, each with its own way of finding 
 
 **About "$10 → $600 in one night" videos:** those show one lucky run out of many. In the one I was shown, a strategy made +$49 while the whole account was worth $3 — that needs a ~17x coin inside half an hour, followed by three more big wins in a row. This bot can have nights like that *only* by luck, the same way it can lose most of a small budget in one night; it doesn't hide the losing runs.
 
+## ✅ High win rate mode
+
+Bot tab → Strategy → **High win rate**. The bot then only buys **strong coins (up ≥ 40 % in 24 h)** with Dip Hunter and Momentum (the two strategies that can be tested), sells **everything at +10 %**, and gives a coin room down to **−30 %** for up to 24 h. Sniper and Whale Tail sit out.
+
+Chosen by `npm run backtest:winrate` (in `bot/`): on the earlier days the rule was "win rate ≥ 75 %, then the best average"; on the last 9 days it never saw (65 coins):
+
+| | Won | Avg per trade (1 % costs) | With 2 % costs | Most losses in a row |
+|---|---|---|---|---|
+| 🪝 Dip Hunter | **79 %** | +2.1 % | +1.1 % | 2 |
+| ⚡ Momentum | **75 %** | +0.1 % | −0.9 % | 4 |
+
+A high win rate is not the same as big profit: each win is +10 %, each loss −30 %, so one loss costs about three wins — the average stays small. It's the steadiest mode, not a money printer. (Samples: 91 test trades each — watch the track record before trusting it with real money.)
+
 ## Strategy: Normal vs. Moonshot, and the track record
 
 On the Bot tab you choose how the bot trades:

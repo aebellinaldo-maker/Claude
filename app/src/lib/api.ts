@@ -45,7 +45,15 @@ export interface BotPosition {
   reason: string;
 }
 
-export type RiskMode = "normal" | "moonshot";
+export type RiskMode = "normal" | "moonshot" | "winrate";
+
+export interface WinrateResult {
+  trades: number;
+  winRate: number;
+  avgPct: number;
+  worstPct: number;
+  lossStreak: number;
+}
 export type StrategyId = "sniper" | "momentum" | "dip" | "whale";
 export const STRATEGY_IDS: StrategyId[] = ["sniper", "momentum", "dip", "whale"];
 
@@ -156,6 +164,13 @@ export interface BotStatus {
   strategies: {
     normal: StrategyInfo;
     moonshot: StrategyInfo;
+    winrate: StrategyInfo & { minChange24hPct: number };
+    winrateBacktest: {
+      coins: number;
+      testDays: number;
+      dip?: { test: WinrateResult; test2pctFees: WinrateResult };
+      momentum?: { test: WinrateResult; test2pctFees: WinrateResult };
+    } | null;
     backtest: { createdAt: number; coins: number; testDays: number; trades: number; normal: StrategyResult; moonshot: StrategyResult } | null;
   };
   stats: TradeStats;

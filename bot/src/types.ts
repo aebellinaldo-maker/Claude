@@ -35,8 +35,10 @@ export interface Settings {
   /**
    * "normal": the exit/sizing values below. "moonshot": fewer, bigger bets that are allowed
    * to run (see risk/profiles.ts) — more chance of a big win AND of a big loss.
+   * "winrate": only Dip Hunter and Momentum on coins up ≥40 % in 24 h, selling everything at
+   * a small target with a wide stop — wins most trades, but each loss is several wins.
    */
-  riskMode: "normal" | "moonshot";
+  riskMode: "normal" | "moonshot" | "winrate";
   /** Which strategies may open new trades. */
   strategies: Record<StrategyId, boolean>;
 

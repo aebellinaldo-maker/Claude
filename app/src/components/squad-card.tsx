@@ -53,13 +53,13 @@ export function SquadCard({ status, onChanged }: { status: BotStatus; onChanged:
               <Switch value={q.enabled} disabled={busy === id} onValueChange={(v) => void toggle(id, v)} trackColor={{ true: colors.accent }} />
             </Row>
             <T small dim>
-              {t("exitsLine", { sl: x.stopLossPct, sell: x.takeProfitSellPct, tp: x.takeProfitPct, trail: x.trailingStopPct, h: x.maxHoldHours })}
+              {t(x.trailingStopPct >= 90 ? "exitsLineNoTrail" : "exitsLine", { sl: x.stopLossPct, sell: x.takeProfitSellPct, tp: x.takeProfitPct, trail: x.trailingStopPct, h: x.maxHoldHours })}
             </T>
             <Row style={{ flexWrap: "wrap" }}>
               <T small faint style={{ flex: 1 }}>
                 {q.closed
                   ? t("squadRecord", {
-                      n: q.closed,
+                      trades: q.closed === 1 ? t("tradeOne") : t("tradesN", { n: q.closed }),
                       w: q.winRate === null ? "–" : `${Math.round(q.winRate * 100)}%`,
                       pf: q.profitFactor === null ? "–" : q.profitFactor >= 99 ? "∞" : q.profitFactor.toFixed(2),
                       m: q.weight.toFixed(1),
@@ -67,6 +67,7 @@ export function SquadCard({ status, onChanged }: { status: BotStatus; onChanged:
                   : t("squadNoTrades")}
               </T>
               {q.benched ? <Pill label={t("benchedTag")} color={colors.red} bg={colors.redDim} /> : null}
+              {status.riskMode === "winrate" && (id === "sniper" || id === "whale") ? <Pill label={t("sitsOutWinrate")} color={colors.yellow} bg={colors.yellowDim} /> : null}
             </Row>
           </View>
         );

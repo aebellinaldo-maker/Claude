@@ -22,6 +22,38 @@ export const MOONSHOT = {
 
 const MOONSHOT_SIZING = { maxPositions: 2, maxPositionPct: 60 };
 
+/**
+ * "High win rate" profile: sell EVERYTHING at a small target (+10 %), wide stop (−30 %), give a
+ * coin up to 24 h. Only for Dip Hunter and Momentum, and only on coins already up ≥ 40 % in
+ * 24 h (strong coins tend to bounce +10 % before they fall 30 %). Chosen with
+ * scripts/backtest-winrate.ts on the earlier days only (win rate ≥ 75 %, then best average);
+ * on the later days it never saw: Dip Hunter 79 % winners, +2.1 % per trade (+1.1 % with 2 %
+ * costs); Momentum 75 %, +0.1 %. The catch: one stop-loss costs about three wins.
+ * (Trailing stop 90 % = effectively off; the time exit sells after 24 h unless up ≥ 10 %.)
+ */
+export const WINRATE = {
+  stopLossPct: 30,
+  takeProfitPct: 10,
+  takeProfitSellPct: 100,
+  trailingStopPct: 90,
+  maxHoldHours: 24,
+};
+export const WINRATE_MIN_24H_PCT = 40;
+export const WINRATE_STRATEGIES = new Set(["dip", "momentum"]);
+export const WINRATE_BACKTEST_FILE = path.resolve("ml/winrate-backtest.json");
+
+let cachedWinrate: unknown;
+export function winrateBacktest(): unknown {
+  if (cachedWinrate === undefined) {
+    try {
+      cachedWinrate = JSON.parse(fs.readFileSync(WINRATE_BACKTEST_FILE, "utf8"));
+    } catch {
+      cachedWinrate = null;
+    }
+  }
+  return cachedWinrate;
+}
+
 /** Results of scripts/backtest-exits.ts on charts not used to choose the values (shipped with the app). */
 export interface StrategyBacktest {
   createdAt: number;
@@ -72,7 +104,9 @@ export function strategies(s: Settings) {
   return {
     normal: pick(effectiveSettings({ ...s, riskMode: "normal" })),
     moonshot: pick(effectiveSettings({ ...s, riskMode: "moonshot" })),
+    winrate: { ...pick({ ...s, ...WINRATE }), minChange24hPct: WINRATE_MIN_24H_PCT },
     backtest: strategyBacktest(),
+    winrateBacktest: winrateBacktest(),
   };
 }
 
